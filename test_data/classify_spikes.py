@@ -84,15 +84,6 @@ trim_factor = 1
 X = X[::trim_factor]
 y = fin_labels[::trim_factor]
 
-#imshow(fin_data[::1000]);plt.show()
-#imshow(zscore_fin_data[::1000]);plt.show()
-#imshow(pca_data[::1000]);plt.show()
-#imshow(X[::1000]);plt.show()
-
-#X_train, X_test, y_train, y_test = train_test_split(
-#    X, fin_labels, test_size=0.4, random_state=42
-#)
-
 X_train, X_test, y_train, y_test = \
         train_test_split(X, y, test_size=0.5, random_state=1)
 
@@ -183,7 +174,7 @@ plt.text(0.25, 0.6, right_str, transform = plt.gca().transAxes)
 plt.title('Distribution of classification probabilities')
 plt.legend()
 plt.savefig(os.path.join(model_save_dir,'spike_classification_dist.png'),
-        dpi = 300)
+        dpi = 300, bbox_inches = 'tight')
 plt.close()
 #plt.show()
 
@@ -228,28 +219,6 @@ plt.savefig(os.path.join(model_save_dir,'spike_classification_examples.png'),
         dpi = 300)
 plt.close()
 #plt.show()
-
-#plt.plot(thresh_vec, true_mean_val, label = 'True fraction')
-#plt.scatter(thresh_vec[true_mean_thresh_inds], 
-#        true_mean_val[true_mean_thresh_inds],
-#        marker = 'x', color = 'orange', label = 'Pass Thresh')
-#plt.plot(proba[:-1], scaled_cumu_false, label = "False fraction")
-#plt.axvline(highest_thresh, color = 'red', label = 'Highest Thresh')
-#plt.xlabel('Threshold')
-#plt.ylabel('Fraction of True Positives detected')
-#plt.suptitle(f'{np.round(best_false,3)} rejected @ {wanted_thresh} true accepted') 
-#plt.legend()
-#plt.show()
-
-## Test on test-set using highest thresh
-test_proba = clf.predict_proba(X_test)[:,1]
-pred_pos = test_proba >= highest_thresh 
-pred_pos = pred_pos*1 
-pred_false = test_proba < highest_thresh
-true_recovered = np.mean(pred_pos[np.where(y_test)[0]])
-false_detected = np.mean(pred_false[np.where(y_test ==0)[0]])
-print(f'{np.round(true_recovered,3)} True recovered' + '\n' +\
-        f'{np.round(false_detected,3)} False detected')
 
 ############################################################
 ## Speed Test
