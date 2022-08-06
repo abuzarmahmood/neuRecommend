@@ -27,14 +27,13 @@ from joblib import dump, load
 def imshow(array):
     plt.imshow(array, interpolation='nearest', aspect='auto')
 
-#h5_path = '/media/bigdata/projects/neuRecommend/test_data/sorted/sorted_waveforms.h5'
-#model_save_dir = '/media/bigdata/projects/neuRecommend/'
-#path_vars = dict(
-#        h5_path = h5_path,
-#        model_save_dir = model_save_dir
-#        )
-#with open('path_vars.json','w') as path_file:
-#    json.dump(path_vars, path_file, indent = 4)
+############################################################
+#| |    ___   __ _  __| | |  _ \  __ _| |_ __ _ 
+#| |   / _ \ / _` |/ _` | | | | |/ _` | __/ _` |
+#| |__| (_) | (_| | (_| | | |_| | (_| | || (_| |
+#|_____\___/ \__,_|\__,_| |____/ \__,_|\__\__,_|
+############################################################
+                                               
 
 with open('path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
@@ -59,21 +58,6 @@ with tables.open_file(h5_path,'r') as h5:
 
 neg_waveforms = np.concatenate(neg_waveforms, axis=0)
 pos_waveforms = np.concatenate(pos_waveforms, axis=0)
-
-## pos_waveforms needs to be of length 75, or 750 that can be downsampled
-#pos_node_list = list(h5.iter_nodes(pos_path))
-## Waveforms with same length as neg_waveforms
-## Take samples from all available units to maintain diversity
-#pos_matched_units = [x for x in pos_node_list
-#                     if x.shape[1] == neg_waveforms.shape[1]]
-#waveforms_per_unit = neg_waveforms.shape[0]//len(pos_matched_units)
-#
-## with tables.open_file(h5_path,'r') as h5:
-#for x in pos_matched_units:
-#    ind = np.min([x.shape[0], waveforms_per_unit])
-#    pos_waveforms.append(x[:ind, :])
-#pos_waveforms = np.concatenate(pos_waveforms, axis=0)
-#h5.close()
 
 neg_label = [0]*neg_waveforms.shape[0]
 pos_label = [1]*pos_waveforms.shape[0]
@@ -110,9 +94,6 @@ X_train, X_val, y_train, y_val = \
 #xgb_model = xgb.XGBClassifier(n_jobs=multiprocessing.cpu_count() // 2)
 # clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
 #               'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
-#clf.fit(X, y)
-# print(clf.best_score_)
-# print(clf.best_params_)
 #
 # Write out best_params to json
 optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
@@ -122,8 +103,6 @@ optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
 
-#
-#clf = xgb.XGBClassifier(**clf.best_params_)
 clf = xgb.XGBClassifier(**best_params)
 
 #clf = RandomForestClassifier(random_state=0)
@@ -135,7 +114,6 @@ clf.score(X_test, y_test)
 # Titrate decision boundaries
 ############################################################
 val_proba = clf.predict_proba(X_val)[:, 1]
-
 all_proba = clf.predict_proba(X)[:, 1]
 
 
