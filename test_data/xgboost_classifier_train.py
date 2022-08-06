@@ -43,7 +43,7 @@ with open('neptune_params.json','r') as path_file:
     neptune_params = json.load(path_file)
 run = neptune.init(**neptune_params,
         capture_stdout = False,
-        capture_sterr = False,
+        capture_stderr = False,
         capture_hardware_metrics = False)
                                                
 with open('path_vars.json','r') as path_file:
