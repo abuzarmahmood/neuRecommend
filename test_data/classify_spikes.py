@@ -27,10 +27,11 @@ import xgboost as xgb
 import shap
 import multiprocessing
 
-from joblib import dump, load
+import neptune.new as neptune
+from neptune.new.types import File
+from neptune.new.integrations.xgboost import NeptuneCallback
 
-def imshow(array):
-    plt.imshow(array, interpolation='nearest', aspect='auto')
+from joblib import dump, load
 
 ############################################################
 #| |    ___   __ _  __| | |  _ \  __ _| |_ __ _ 
@@ -38,6 +39,9 @@ def imshow(array):
 #| |__| (_) | (_| | (_| | | |_| | (_| | || (_| |
 #|_____\___/ \__,_|\__,_| |____/ \__,_|\__\__,_|
 ############################################################
+with open('neptune_params.json','r') as path_file:
+    neptune_params = json.load(path_file)
+run = neptune.init(**neptune_params)
                                                
 
 with open('path_vars.json','r') as path_file:
@@ -46,6 +50,8 @@ with open('path_vars.json','r') as path_file:
 h5_path = path_vars['h5_fin_path']
 model_save_dir = path_vars['model_save_dir']
 plot_dir = path_vars['plot_dir']
+
+run["train_dataset"].track_files(h5_path)
 
 # Load equal numbers of waveforms for pos,neg, split into train,test
 # Since positive samples are >> negative, we will subsample from them
@@ -107,13 +113,17 @@ optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
 
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
-clf = xgb.XGBClassifier(**best_params)
+run["model/parameters"] = best_params
+
+clf = xgb.XGBClassifier(**best_params, callbacks = [NeptuneCallback(run=run)])
 clf.fit(X_train, y_train)
 
 #clf = load(os.path.join(model_save_dir, 'xgb_classifier'))
 
-clf.score(X_train, y_train)
-clf.score(X_test, y_test)
+train_score = clf.score(X_train, y_train)
+test_score = clf.score(X_test, y_test)
+
+#run["evaluation/test_accuracy"] = test_score
 
 ############################################################
 # Titrate decision boundaries
@@ -158,6 +168,12 @@ conf_mat = confusion_matrix(y_val, fin_val_pred, normalize = 'true')
 conf_dict = dict(zip(labels, np.round(conf_mat.ravel(),4)))
 print(conf_dict)
 
+thresh_accuracy = np.mean((val_proba > highest_thresh) == y_val)
+
+run["model/parameters/final_threshold"] = highest_thresh
+run["evaluation/final_accuracy"] = thresh_accuracy 
+run["evaluation/final_confusion_matrix"] = conf_dict
+
 ############################################################
 # Plot distribution of predicted probabilities
 ############################################################
@@ -194,22 +210,26 @@ prob_frame = pd.DataFrame(
     )
 )
 
-nrn_inds = []
-noise_inds = []
+#nrn_inds = []
+#noise_inds = []
+inds = []
 for this_prob in wanted_probs:
-    spike_val = (prob_frame['prob'][prob_frame.label == 1] - this_prob)\
+    #spike_val = (prob_frame['prob'][prob_frame.label == 1] - this_prob)\
+    #    .abs().argsort()[:10].values
+    #noise_val = (prob_frame['prob'][prob_frame.label == 0] - this_prob)\
+    #    .abs().argsort()[:10].values
+    val = (prob_frame['prob'] - this_prob)\
         .abs().argsort()[:10].values
-    noise_val = (prob_frame['prob'][prob_frame.label == 0] - this_prob)\
-        .abs().argsort()[:10].values
-    nrn_inds.append(spike_val)
-    noise_inds.append(noise_val)
+    #nrn_inds.append(spike_val)
+    #noise_inds.append(noise_val)
+    inds.append(val)
 
 fig, ax = plt.subplots(1, len(wanted_probs), sharey=True,
                        figsize=(13, 2))
 for num in range(len(wanted_probs)):
     # ax[0,num].plot(fin_data[nrn_inds[num]])
     # ax[1,num].plot(fin_data[noise_inds[num]])
-    this_dat = zscore(fin_data[noise_inds[num]], axis=-1)
+    this_dat = zscore(fin_data[inds[num]], axis=-1)
     flip_bool = np.vectorize(np.int)(np.sign(this_dat[:, 30]))
     this_dat = np.stack([x*-1 if this_bool == 1 else x
                          for x, this_bool in zip(this_dat, flip_bool)])
@@ -224,6 +244,37 @@ plt.savefig(os.path.join(plot_dir, 'spike_classification_examples.png'),
             dpi=300)
 plt.close()
 # plt.show()
+
+#Log sample predictions
+sample_predictions = []
+for this_prob, this_set in zip(wanted_probs, inds):
+    for this_ind in this_set:
+        this_dat = fin_data[this_ind] 
+        this_prob = prob_frame['prob'].iloc[this_ind]
+        this_label = prob_frame['label'].iloc[this_ind]
+        this_dict = dict(
+                dat = this_dat,
+                prob = this_prob,
+                label = this_label
+                )
+        sample_predictions.append(this_dict)
+
+sample_frame = pd.DataFrame(sample_predictions)
+sample_frame['pred_label'] = (sample_frame['prob'] > highest_thresh)*1
+
+#run["evaluation/predictions"].upload(File.as_html(sample_frame))
+
+#for x in sample_predictions:
+#    dat = x['dat']
+#    prob = x['prob']
+#    label = x['label']
+#    pred_label = int(prob >=highest_thresh)
+#
+#    description = f"class {label}: {prob}" 
+#
+#    run["evaluation/predictions"].log(
+#        dat, name=pred_label, description=description
+#    )
 
 ############################################################
 # Speed Test
@@ -243,6 +294,13 @@ pipeline = Pipeline([
     ('xgboost', clf)])
 dump(pipeline, os.path.join(model_save_dir, "xgb_pipeline"))
 
+run["model/saved_model"].upload(
+        os.path.join(model_save_dir, "xgb_classifier"))
+
+run["model/saved_pipeline"].upload(
+        os.path.join(model_save_dir, "xgb_pipeline"))
+
+run.stop()
 ############################################################
 # SHAP analysis 
 ############################################################
