@@ -41,17 +41,24 @@ from joblib import dump, load
 ############################################################
 with open('neptune_params.json','r') as path_file:
     neptune_params = json.load(path_file)
-run = neptune.init(**neptune_params)
+run = neptune.init(**neptune_params,
+        capture_stdout = False,
+        capture_sterr = False,
+        capture_hardware_metrics = False)
                                                
-
 with open('path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
 
 h5_path = path_vars['h5_fin_path']
+h5_dir = os.path.dirname(h5_path)
 model_save_dir = path_vars['model_save_dir']
 plot_dir = path_vars['plot_dir']
 
-run["train_dataset"].track_files(h5_path)
+run["data/train_dataset"].track_files(h5_path)
+run["data/train_dataset_metadata"].upload(
+        os.path.join(h5_dir, 'fin_data_metadata.csv'))
+run["data/train_dataset_summary_stats"].upload(
+        os.path.join(h5_dir, 'fin_data_summary_stats.json'))
 
 # Load equal numbers of waveforms for pos,neg, split into train,test
 # Since positive samples are >> negative, we will subsample from them
@@ -101,6 +108,7 @@ X_train, X_test, y_train, y_test = \
 X_train, X_val, y_train, y_val = \
     train_test_split(X_train, y_train, test_size=0.25, random_state=1)
 
+model_type = 'xgboost'
 #xgb_model = xgb.XGBClassifier(n_jobs=multiprocessing.cpu_count() // 2)
 #clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
 #           'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
@@ -115,13 +123,24 @@ with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
 run["model/parameters"] = best_params
 
-clf = xgb.XGBClassifier(**best_params, callbacks = [NeptuneCallback(run=run)])
+clf = xgb.XGBClassifier(**best_params)#, callbacks = [NeptuneCallback(run=run)])
+
+train_start = time()
 clf.fit(X_train, y_train)
+train_end = time()
+fit_time = train_end - train_start
+run['model/type'] = model_type 
+run["model/fit_time"] = np.round(fit_time, 3) 
+run["model/train_set_size"] = X_train.shape 
 
 #clf = load(os.path.join(model_save_dir, 'xgb_classifier'))
-
+pred_start = time()
 train_score = clf.score(X_train, y_train)
-test_score = clf.score(X_test, y_test)
+pred_end = time()
+pred_time = pred_end-pred_start
+run["model/train_set_pred_time"] = np.round(pred_time, 3) 
+
+#test_score = clf.score(X_test, y_test)
 
 #run["evaluation/test_accuracy"] = test_score
 
@@ -276,43 +295,46 @@ sample_frame['pred_label'] = (sample_frame['prob'] > highest_thresh)*1
 #        dat, name=pred_label, description=description
 #    )
 
-############################################################
-# Speed Test
-############################################################
-start_t = time()
-clf.predict_proba(X)
-end_t = time()
-print(end_t-start_t)
+#############################################################
+## Speed Test
+#############################################################
+#start_t = time()
+#clf.predict_proba(X)
+#end_t = time()
+#print(end_t-start_t)
 
+#############################################################
+## Save Model 
+#############################################################
 #xgb.save(clf, os.path.join(model_save_dir, "xgb_classifier"))
-dump(clf, os.path.join(model_save_dir, "xgb_classifier"))
+dump(clf, os.path.join(model_save_dir, f"{model_type}_classifier"))
 
 pipeline = Pipeline([
     ('zscore', zscore_transform),
     ('pca', pca_obj),
     ('scaler', scaler_obj),
-    ('xgboost', clf)])
-dump(pipeline, os.path.join(model_save_dir, "xgb_pipeline"))
+    ('classifier', clf)])
+dump(pipeline, os.path.join(model_save_dir, f"{model_type}_pipeline"))
 
 run["model/saved_model"].upload(
-        os.path.join(model_save_dir, "xgb_classifier"))
+        os.path.join(model_save_dir, f"{model_type}_classifier"))
 
 run["model/saved_pipeline"].upload(
-        os.path.join(model_save_dir, "xgb_pipeline"))
+        os.path.join(model_save_dir, f"{model_type}_pipeline"))
 
 run.stop()
 ############################################################
 # SHAP analysis 
 ############################################################
-Xd = xgb.DMatrix(X, label=y)
-# make sure the SHAP values add up to marginal predictions
-pred = clf.predict(X, output_margin=True)
-explainer = shap.TreeExplainer(clf)
-shap_values = explainer.shap_values(Xd)
-np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
-
-plt.figure()
-shap.summary_plot(shap_values, X)
-plt.savefig(os.path.join(plot_dir, 'xgboost_shap.png'),
-            dpi=300)
-plt.close()
+#Xd = xgb.DMatrix(X, label=y)
+## make sure the SHAP values add up to marginal predictions
+#pred = clf.predict(X, output_margin=True)
+#explainer = shap.TreeExplainer(clf)
+#shap_values = explainer.shap_values(Xd)
+#np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
+#
+#plt.figure()
+#shap.summary_plot(shap_values, X)
+#plt.savefig(os.path.join(plot_dir, 'xgboost_shap.png'),
+#            dpi=300)
+#plt.close()
