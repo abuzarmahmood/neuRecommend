@@ -1,3 +1,7 @@
+"""
+https://docs.neptune.ai/getting-started/how-to-add-neptune-to-your-code
+"""
+
 import tables
 import numpy as np
 from tqdm import tqdm
@@ -20,6 +24,7 @@ from sklearn.metrics import confusion_matrix
 
 from sklearn.model_selection import GridSearchCV
 import xgboost as xgb
+import shap
 import multiprocessing
 
 from joblib import dump, load
@@ -38,8 +43,9 @@ def imshow(array):
 with open('path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
 
-h5_path = path_vars['h5_path']
+h5_path = path_vars['h5_fin_path']
 model_save_dir = path_vars['model_save_dir']
+plot_dir = path_vars['plot_dir']
 
 # Load equal numbers of waveforms for pos,neg, split into train,test
 # Since positive samples are >> negative, we will subsample from them
@@ -81,9 +87,7 @@ pca_data = pca_obj.transform(zscore_fin_data2)
 
 scaler_obj = StandardScaler().fit(pca_data)
 X = scaler_obj.transform(pca_data)
-trim_factor = 1
-X = X[::trim_factor]
-y = fin_labels[::trim_factor]
+y = fin_labels
 
 X_train, X_test, y_train, y_test = \
     train_test_split(X, y, test_size=0.5, random_state=1)
@@ -92,9 +96,10 @@ X_train, X_val, y_train, y_val = \
     train_test_split(X_train, y_train, test_size=0.25, random_state=1)
 
 #xgb_model = xgb.XGBClassifier(n_jobs=multiprocessing.cpu_count() // 2)
-# clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
-#               'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
-#
+#clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
+#           'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
+#clf.fit(X_train, y_train)
+
 # Write out best_params to json
 optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
 # with open(optim_params_path,'w') as outfile:
@@ -102,11 +107,11 @@ optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
 
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
-
 clf = xgb.XGBClassifier(**best_params)
-
-#clf = RandomForestClassifier(random_state=0)
 clf.fit(X_train, y_train)
+
+#clf = load(os.path.join(model_save_dir, 'xgb_classifier'))
+
 clf.score(X_train, y_train)
 clf.score(X_test, y_test)
 
@@ -150,13 +155,14 @@ best_false = scaled_cumu_false[np.argmin(np.abs(proba-highest_thresh))]
 fin_val_pred = val_proba > highest_thresh
 labels = ['true_neg','false_neg','false_pos','true_pos']
 conf_mat = confusion_matrix(y_val, fin_val_pred, normalize = 'true')
-print(dict(zip(labels, np.round(conf_mat.ravel(),4))))
+conf_dict = dict(zip(labels, np.round(conf_mat.ravel(),4)))
+print(conf_dict)
 
 ############################################################
 # Plot distribution of predicted probabilities
 ############################################################
-left_str = '1% Spikes' + '\n' + '93% Noise'
-right_str = '99% Spikes' + '\n' + '7% Noise'
+left_str = '1% Spikes' + '\n' + f'{conf_dict["true_neg"]*100:.1f}% Noise'
+right_str = f'99% Spikes' + '\n' + f'{100 - (conf_dict["true_neg"]*100):.1f}% Noise'
 
 plt.hist(val_proba[np.where(y_val)[0]], bins=50,
          alpha=0.5, label='True Spike')
@@ -172,7 +178,7 @@ plt.text(0.05, 0.6, left_str, transform=plt.gca().transAxes)
 plt.text(0.25, 0.6, right_str, transform=plt.gca().transAxes)
 plt.title('Distribution of classification probabilities')
 plt.legend()
-plt.savefig(os.path.join(model_save_dir, 'spike_classification_dist.png'),
+plt.savefig(os.path.join(plot_dir, 'spike_classification_dist.png'),
             dpi=300, bbox_inches='tight')
 plt.close()
 # plt.show()
@@ -214,7 +220,7 @@ for num in range(len(wanted_probs)):
     ax[num].set_xticks([])
     ax[num].set_yticklabels([])
     ax[num].set_yticks([])
-plt.savefig(os.path.join(model_save_dir, 'spike_classification_examples.png'),
+plt.savefig(os.path.join(plot_dir, 'spike_classification_examples.png'),
             dpi=300)
 plt.close()
 # plt.show()
@@ -234,5 +240,21 @@ pipeline = Pipeline([
     ('zscore', zscore_transform),
     ('pca', pca_obj),
     ('scaler', scaler_obj),
-    ('svc', clf)])
+    ('xgboost', clf)])
 dump(pipeline, os.path.join(model_save_dir, "xgb_pipeline"))
+
+############################################################
+# SHAP analysis 
+############################################################
+Xd = xgb.DMatrix(X, label=y)
+# make sure the SHAP values add up to marginal predictions
+pred = clf.predict(X, output_margin=True)
+explainer = shap.TreeExplainer(clf)
+shap_values = explainer.shap_values(Xd)
+np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
+
+plt.figure()
+shap.summary_plot(shap_values, X)
+plt.savefig(os.path.join(plot_dir, 'xgboost_shap.png'),
+            dpi=300)
+plt.close()
