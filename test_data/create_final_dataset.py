@@ -94,12 +94,14 @@ metadata_frame = pd.DataFrame(
 metadata_frame.to_csv(os.path.join(h5_dir, 'fin_data_metadata.csv'))
 
 summary_dat = dict(
-        cluster_counts = metadata_frame.groupby('class')\
-                .count().iloc[:,0].to_dict(),
-        summary_stats = str(metadata_frame.groupby('class').describe().T)
+        cluster_counts = metadata_frame.groupby('class').count().iloc[:,0].to_dict(),
+        summary_stats = metadata_frame.groupby('class').describe().T.reset_index().to_dict(orient='records'),
+        totals = metadata_frame.groupby('class').sum()['waveform_count'].to_dict()
         )
-summary_dat_str = str(summary_dat)
+#from pprint import pprint
+#pprint(summary_dat)
+#summary_dat_str = str(summary_dat)
 
 with open(os.path.join(h5_dir, 'fin_data_summary_stats.json'), 'w') as out_file:
-    #json.dump(summary_dat, out_file,  indent = 4)
-    out_file.writelines(summary_dat_str)
+    json.dump(summary_dat, out_file,  indent = 4)
+    #out_file.writelines(summary_dat_str)
