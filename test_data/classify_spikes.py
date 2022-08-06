@@ -16,12 +16,16 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
+from sklearn.metrics import confusion_matrix
 
 from sklearn.model_selection import GridSearchCV
 import xgboost as xgb
 import multiprocessing
 
 from joblib import dump, load
+
+def imshow(array):
+    plt.imshow(array, interpolation='nearest', aspect='auto')
 
 #h5_path = '/media/bigdata/projects/neuRecommend/test_data/sorted/sorted_waveforms.h5'
 #model_save_dir = '/media/bigdata/projects/neuRecommend/'
@@ -38,10 +42,6 @@ with open('path_vars.json','r') as path_file:
 h5_path = path_vars['h5_path']
 model_save_dir = path_vars['model_save_dir']
 
-def imshow(array):
-    plt.imshow(array, interpolation='nearest', aspect='auto')
-
-
 # Load equal numbers of waveforms for pos,neg, split into train,test
 # Since positive samples are >> negative, we will subsample from them
 neg_path = '/sorted/neg'
@@ -50,26 +50,30 @@ pos_path = '/sorted/pos'
 neg_waveforms = []
 pos_waveforms = []
 
-# with tables.open_file(h5_path,'r') as h5:
-h5 = tables.open_file(h5_path, 'r')
-for x in h5.iter_nodes(neg_path):
-    neg_waveforms.append(x[:])
+with tables.open_file(h5_path,'r') as h5:
+    #h5 = tables.open_file(h5_path, 'r')
+    for x in h5.iter_nodes(neg_path):
+        neg_waveforms.append(x[:])
+    for x in h5.iter_nodes(pos_path):
+        pos_waveforms.append(x[:])
 
 neg_waveforms = np.concatenate(neg_waveforms, axis=0)
-
-# pos_waveforms needs to be of length 75, or 750 that can be downsampled
-pos_node_list = list(h5.iter_nodes(pos_path))
-# Waveforms with same length as neg_waveforms
-pos_matched_units = [x for x in pos_node_list
-                     if x.shape[1] == neg_waveforms.shape[1]]
-waveforms_per_unit = neg_waveforms.shape[0]//len(pos_matched_units)
-
-# with tables.open_file(h5_path,'r') as h5:
-for x in pos_matched_units:
-    ind = np.min([x.shape[0], waveforms_per_unit])
-    pos_waveforms.append(x[:ind, :])
 pos_waveforms = np.concatenate(pos_waveforms, axis=0)
-h5.close()
+
+## pos_waveforms needs to be of length 75, or 750 that can be downsampled
+#pos_node_list = list(h5.iter_nodes(pos_path))
+## Waveforms with same length as neg_waveforms
+## Take samples from all available units to maintain diversity
+#pos_matched_units = [x for x in pos_node_list
+#                     if x.shape[1] == neg_waveforms.shape[1]]
+#waveforms_per_unit = neg_waveforms.shape[0]//len(pos_matched_units)
+#
+## with tables.open_file(h5_path,'r') as h5:
+#for x in pos_matched_units:
+#    ind = np.min([x.shape[0], waveforms_per_unit])
+#    pos_waveforms.append(x[:ind, :])
+#pos_waveforms = np.concatenate(pos_waveforms, axis=0)
+#h5.close()
 
 neg_label = [0]*neg_waveforms.shape[0]
 pos_label = [1]*pos_waveforms.shape[0]
@@ -79,12 +83,10 @@ fin_labels = np.concatenate([neg_label, pos_label])
 # Train classifier
 ############################################################
 
-
 def zscore_custom(x):
     return zscore(x, axis=-1)
 
 zscore_transform = FunctionTransformer(zscore_custom)
-
 
 fin_data = np.concatenate([neg_waveforms, pos_waveforms])
 #zscore_fin_data = zscore(fin_data, axis=-1)
@@ -167,6 +169,10 @@ true_mean_thresh_inds = true_mean_val >= wanted_thresh
 highest_thresh = np.max(thresh_vec[true_mean_thresh_inds])
 best_false = scaled_cumu_false[np.argmin(np.abs(proba-highest_thresh))]
 
+fin_val_pred = val_proba > highest_thresh
+labels = ['true_neg','false_neg','false_pos','true_pos']
+conf_mat = confusion_matrix(y_val, fin_val_pred, normalize = 'true')
+print(dict(zip(labels, np.round(conf_mat.ravel(),4))))
 
 ############################################################
 # Plot distribution of predicted probabilities
