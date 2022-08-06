@@ -71,7 +71,7 @@ for this_node in tqdm(neg_node_list):
         trim = 10
     else:
         trim = 1
-    fin_data = this_node[:waveforms_per_unit, ::trim]
+    fin_data = this_node[:, ::trim]
     hf5_out.create_array(
             save_path,
             this_node.name,
