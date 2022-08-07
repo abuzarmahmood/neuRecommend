@@ -14,6 +14,7 @@ from sklearn.decomposition import PCA as pca
 from time import time
 import json
 import pandas as pd
+import hashlib, base64
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -39,12 +40,9 @@ from joblib import dump, load
 #| |__| (_) | (_| | (_| | | |_| | (_| | || (_| |
 #|_____\___/ \__,_|\__,_| |____/ \__,_|\__\__,_|
 ############################################################
-with open('neptune_params.json','r') as path_file:
-    neptune_params = json.load(path_file)
-run = neptune.init(**neptune_params,
-        capture_stdout = False,
-        capture_stderr = False,
-        capture_hardware_metrics = False)
+perform_gridsearch = False
+run_shap = True
+log_to_neptune = True
                                                
 with open('path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
@@ -54,11 +52,6 @@ h5_dir = os.path.dirname(h5_path)
 model_save_dir = path_vars['model_save_dir']
 plot_dir = path_vars['plot_dir']
 
-run["data/train_dataset"].track_files(h5_path)
-run["data/train_dataset_metadata"].upload(
-        os.path.join(h5_dir, 'fin_data_metadata.csv'))
-run["data/train_dataset_summary_stats"].upload(
-        os.path.join(h5_dir, 'fin_data_summary_stats.json'))
 
 # Load equal numbers of waveforms for pos,neg, split into train,test
 # Since positive samples are >> negative, we will subsample from them
@@ -82,6 +75,7 @@ neg_label = [0]*neg_waveforms.shape[0]
 pos_label = [1]*pos_waveforms.shape[0]
 fin_labels = np.concatenate([neg_label, pos_label])
 
+
 ############################################################
 # Train classifier
 ############################################################
@@ -92,14 +86,34 @@ def zscore_custom(x):
 zscore_transform = FunctionTransformer(zscore_custom)
 
 fin_data = np.concatenate([neg_waveforms, pos_waveforms])
-#zscore_fin_data = zscore(fin_data, axis=-1)
-zscore_fin_data2 = zscore_transform.transform(fin_data)
-pca_obj = pca(n_components=10).fit(zscore_fin_data2[::1000])
-print(f'Explained variance : {np.sum(pca_obj.explained_variance_ratio_)}')
-pca_data = pca_obj.transform(zscore_fin_data2)
 
-scaler_obj = StandardScaler().fit(pca_data)
-X = scaler_obj.transform(pca_data)
+energy = np.sqrt(np.sum(fin_data**2, axis = -1))/fin_data.shape[-1]
+amplitude = np.max(np.abs(fin_data), axis=-1)
+
+zscore_fin_data = zscore_transform.transform(fin_data)
+pca_obj = pca(n_components=8).fit(zscore_fin_data[::100])
+print(f'Explained variance : {np.sum(pca_obj.explained_variance_ratio_)}')
+pca_data = pca_obj.transform(zscore_fin_data)
+
+feature_dict = dict([
+        ('pca' , pca_data),
+        ('energy' , energy[:,np.newaxis]),
+        ('amplitude' , amplitude[:,np.newaxis])
+        ])
+# Get labels for each feature to use for SHAP later
+feature_labels = [[f'{x}_{num}' for num,x in enumerate([key]*val.shape[1])] \
+        for key,val in feature_dict.items()]
+feature_labels = [x for y in feature_labels for x in y]
+feature_details = {key:val.shape for key,val in feature_dict.items()}
+feat_str = str("".join([key+str(val) for key,val in feature_details.items()]))
+#d=hashlib.md5(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
+d=hashlib.sha256(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
+feature_hash= d.decode('ascii')[:6]
+
+all_features = np.concatenate([val for val in feature_dict.values()], axis = 1)
+
+scaler_obj = StandardScaler().fit(all_features)
+X = scaler_obj.transform(all_features)
 y = fin_labels
 
 X_train, X_test, y_train, y_test = \
@@ -109,19 +123,23 @@ X_train, X_val, y_train, y_val = \
     train_test_split(X_train, y_train, test_size=0.25, random_state=1)
 
 model_type = 'xgboost'
-#xgb_model = xgb.XGBClassifier(n_jobs=multiprocessing.cpu_count() // 2)
-#clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
-#           'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
-#clf.fit(X_train, y_train)
+optim_params_path = '/media/bigdata/projects/neuRecommend/optim_params.json'
+#optim_params_path = os.path.join(
+#        model_save_dir, f'optim_params_{feature_hash}.json')
 
-# Write out best_params to json
-optim_params_path = os.path.join(model_save_dir, 'optim_params.json')
-# with open(optim_params_path,'w') as outfile:
-#    json.dump(clf.best_params_, outfile, indent = 4)
+if perform_gridsearch: 
+    xgb_model = xgb.XGBClassifier(n_jobs=multiprocessing.cpu_count() // 2)
+    clf = GridSearchCV(xgb_model, {'max_depth': [2, 4, 6],
+               'n_estimators': [50, 100, 200]}, verbose=1, n_jobs=2)
+    clf.fit(X_train, y_train)
 
+    # Write out best_params to json
+    with open(optim_params_path,'w') as outfile:
+       json.dump(clf.best_params_, outfile, indent = 4)
+
+########################################
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
-run["model/parameters"] = best_params
 
 clf = xgb.XGBClassifier(**best_params)#, callbacks = [NeptuneCallback(run=run)])
 
@@ -129,20 +147,13 @@ train_start = time()
 clf.fit(X_train, y_train)
 train_end = time()
 fit_time = train_end - train_start
-run['model/type'] = model_type 
-run["model/fit_time"] = np.round(fit_time, 3) 
-run["model/train_set_size"] = X_train.shape 
 
 #clf = load(os.path.join(model_save_dir, 'xgb_classifier'))
 pred_start = time()
 train_score = clf.score(X_train, y_train)
 pred_end = time()
 pred_time = pred_end-pred_start
-run["model/train_set_pred_time"] = np.round(pred_time, 3) 
 
-#test_score = clf.score(X_test, y_test)
-
-#run["evaluation/test_accuracy"] = test_score
 
 ############################################################
 # Titrate decision boundaries
@@ -189,9 +200,6 @@ print(conf_dict)
 
 thresh_accuracy = np.mean((val_proba > highest_thresh) == y_val)
 
-run["model/parameters/final_threshold"] = highest_thresh
-run["evaluation/final_accuracy"] = thresh_accuracy 
-run["evaluation/final_confusion_matrix"] = conf_dict
 
 ############################################################
 # Plot distribution of predicted probabilities
@@ -281,7 +289,6 @@ for this_prob, this_set in zip(wanted_probs, inds):
 sample_frame = pd.DataFrame(sample_predictions)
 sample_frame['pred_label'] = (sample_frame['prob'] > highest_thresh)*1
 
-#run["evaluation/predictions"].upload(File.as_html(sample_frame))
 
 #for x in sample_predictions:
 #    dat = x['dat']
@@ -291,17 +298,8 @@ sample_frame['pred_label'] = (sample_frame['prob'] > highest_thresh)*1
 #
 #    description = f"class {label}: {prob}" 
 #
-#    run["evaluation/predictions"].log(
 #        dat, name=pred_label, description=description
 #    )
-
-#############################################################
-## Speed Test
-#############################################################
-#start_t = time()
-#clf.predict_proba(X)
-#end_t = time()
-#print(end_t-start_t)
 
 #############################################################
 ## Save Model 
@@ -316,25 +314,75 @@ pipeline = Pipeline([
     ('classifier', clf)])
 dump(pipeline, os.path.join(model_save_dir, f"{model_type}_pipeline"))
 
-run["model/saved_model"].upload(
-        os.path.join(model_save_dir, f"{model_type}_classifier"))
 
-run["model/saved_pipeline"].upload(
-        os.path.join(model_save_dir, f"{model_type}_pipeline"))
-
-run.stop()
 ############################################################
 # SHAP analysis 
 ############################################################
-#Xd = xgb.DMatrix(X, label=y)
-## make sure the SHAP values add up to marginal predictions
-#pred = clf.predict(X, output_margin=True)
-#explainer = shap.TreeExplainer(clf)
-#shap_values = explainer.shap_values(Xd)
-#np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
-#
-#plt.figure()
-#shap.summary_plot(shap_values, X)
-#plt.savefig(os.path.join(plot_dir, 'xgboost_shap.png'),
-#            dpi=300)
-#plt.close()
+X_frame = pd.DataFrame(X, columns = feature_labels)
+if run_shap:
+    Xd = xgb.DMatrix(X_frame, label=y)
+    # make sure the SHAP values add up to marginal predictions
+    pred = clf.predict(X_frame, output_margin=True)
+    explainer = shap.TreeExplainer(clf)
+    #shap_values = explainer.shap_values(Xd)
+    shap_values = explainer(Xd)
+    #np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
+    
+    plt.figure()
+    shap.summary_plot(shap_values.values[::100], X_frame.iloc[::100])
+    plt.savefig(os.path.join(plot_dir, f'xgboost_shap_summary_{feature_hash}.png'),
+                dpi=300)
+    plt.close()
+
+    plt.figure()
+    shap.plots.bar(shap_values)
+    ax = plt.gca()
+    ticks = ax.get_yticks()[:len(feature_labels)]
+    labels = [x._text for x in ax.get_yticklabels()[:len(feature_labels)]]
+    label_ind = [int(x[-1]) for x in labels]
+    sorted_labels = [feature_labels[x] for x in label_ind]
+    plt.yticks(ticks, labels = sorted_labels)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_dir, f'xgboost_shap_bar_{feature_hash}.png'),
+                dpi=300) 
+    plt.close()
+
+############################################################
+# Log to neptune 
+############################################################
+if log_to_neptune:
+    with open('neptune_params.json','r') as path_file:
+        neptune_params = json.load(path_file)
+    run = neptune.init(**neptune_params,
+            capture_stdout = False,
+            capture_stderr = False,
+            capture_hardware_metrics = False)
+    run["data/train_dataset"].track_files(h5_path)
+    run["data/train_dataset_metadata"].upload(
+        os.path.join(h5_dir, 'fin_data_metadata.csv'))
+    run["data/train_dataset_summary_stats"].upload(
+        os.path.join(h5_dir, 'fin_data_summary_stats.json'))
+    run["data/feature_array_hash"] = feature_hash
+    run['model/features_details'] = feature_details 
+    run['model/features_str'] = '\n'.join([f'{key}:{val.shape[1]}' 
+        for key,val in feature_dict.items()])
+    run["model/parameters"] = best_params
+    run['model/type'] = model_type 
+    run["model/fit_time"] = np.round(fit_time, 3) 
+    run["model/train_set_size"] = X_train.shape 
+    run["model/train_set_pred_time"] = np.round(pred_time, 3) 
+    run["model/parameters/final_threshold"] = highest_thresh
+    run["evaluation/final_accuracy"] = thresh_accuracy 
+    run["evaluation/final_confusion_matrix"] = conf_dict
+    run["model/saved_model"].upload(
+        os.path.join(model_save_dir, f"{model_type}_classifier"))
+    run["model/saved_pipeline"].upload(
+        os.path.join(model_save_dir, f"{model_type}_pipeline"))
+    if run_shap:
+        run['model/shap_summary'].upload(
+         os.path.join(plot_dir, f'xgboost_shap_summary_{feature_hash}.png') 
+                )
+        run['model/shap_bar'].upload(
+             os.path.join(plot_dir, f'xgboost_shap_bar_{feature_hash}.png')        
+                )
+    run.stop()
