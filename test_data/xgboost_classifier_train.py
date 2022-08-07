@@ -16,6 +16,7 @@ import json
 import pandas as pd
 import hashlib, base64
 
+from scipy.signal import fftconvolve
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
@@ -43,6 +44,9 @@ from joblib import dump, load
 perform_gridsearch = False
 run_shap = True
 log_to_neptune = True
+
+custom_run_id = 'xgb_auto+cross_corr'
+model_type = 'xgboost'
                                                
 with open('path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
@@ -91,14 +95,36 @@ energy = np.sqrt(np.sum(fin_data**2, axis = -1))/fin_data.shape[-1]
 amplitude = np.max(np.abs(fin_data), axis=-1)
 
 zscore_fin_data = zscore_transform.transform(fin_data)
-pca_obj = pca(n_components=8).fit(zscore_fin_data[::100])
+pca_obj = pca(n_components=10).fit(zscore_fin_data[::100])
 print(f'Explained variance : {np.sum(pca_obj.explained_variance_ratio_)}')
 pca_data = pca_obj.transform(zscore_fin_data)
+
+# Calculate autocorrelation of dejittered slices to attempt to remove 
+# periodic noise
+slices_autocorr = fftconvolve(zscore_fin_data, zscore_fin_data, axes = -1)
+# Perform PCA on scaled autocorrelations
+pca_autocorr_obj = pca(n_components=2).fit(slices_autocorr[::100])
+pca_autocorr = pca_autocorr_obj.transform(slices_autocorr)
+
+# Cross-correlation with average zscore pca positive components
+zscore_pos_waveforms = zscore(pos_waveforms[::100], axis=-1)
+zscore_pos_pca_obj = pca(n_components = 3).fit(zscore_pos_waveforms)
+zscore_pos_pca = zscore_pos_pca_obj.transform(zscore_pos_waveforms)
+zscore_pos_reconstructed = zscore_pos_pca_obj.inverse_transform(zscore_pos_pca)
+mean_template = zscore_pos_reconstructed.mean(axis=0)
+slices_template_corr = fftconvolve(zscore_fin_data, 
+        np.tile(mean_template, (zscore_fin_data.shape[0],1)), 
+        axes = -1)
+# Perform PCA on cross-correlations 
+pca_template_corr_obj = pca(n_components=2).fit(slices_template_corr[::100])
+pca_template_corr = pca_template_corr_obj.transform(slices_template_corr)
 
 feature_dict = dict([
         ('pca' , pca_data),
         ('energy' , energy[:,np.newaxis]),
-        ('amplitude' , amplitude[:,np.newaxis])
+        ('amplitude' , amplitude[:,np.newaxis]),
+        ('autocorr_pc', pca_autocorr),
+        ('template_corr_pc', pca_template_corr)
         ])
 # Get labels for each feature to use for SHAP later
 feature_labels = [[f'{x}_{num}' for num,x in enumerate([key]*val.shape[1])] \
@@ -122,7 +148,6 @@ X_train, X_test, y_train, y_test = \
 X_train, X_val, y_train, y_val = \
     train_test_split(X_train, y_train, test_size=0.25, random_state=1)
 
-model_type = 'xgboost'
 optim_params_path = '/media/bigdata/projects/neuRecommend/optim_params.json'
 #optim_params_path = os.path.join(
 #        model_save_dir, f'optim_params_{feature_hash}.json')
@@ -335,11 +360,12 @@ if run_shap:
     plt.close()
 
     plt.figure()
-    shap.plots.bar(shap_values)
+    shap.plots.bar(shap_values, max_display = len(feature_labels))
     ax = plt.gca()
     ticks = ax.get_yticks()[:len(feature_labels)]
     labels = [x._text for x in ax.get_yticklabels()[:len(feature_labels)]]
-    label_ind = [int(x[-1]) for x in labels]
+    digits = [x.split(' ')[-1] for x in labels] 
+    label_ind = [int(x) for x in digits if x.isdigit()]
     sorted_labels = [feature_labels[x] for x in label_ind]
     plt.yticks(ticks, labels = sorted_labels)
     plt.tight_layout()
@@ -357,6 +383,7 @@ if log_to_neptune:
             capture_stdout = False,
             capture_stderr = False,
             capture_hardware_metrics = False)
+    run["sys/name"] = custom_run_id
     run["data/train_dataset"].track_files(h5_path)
     run["data/train_dataset_metadata"].upload(
         os.path.join(h5_dir, 'fin_data_metadata.csv'))
