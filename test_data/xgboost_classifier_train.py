@@ -35,6 +35,9 @@ from neptune.new.integrations.xgboost import NeptuneCallback
 
 from joblib import dump, load
 
+from return_data import return_data
+from feature_engineering_pipeline import *
+
 ############################################################
 #| |    ___   __ _  __| | |  _ \  __ _| |_ __ _ 
 #| |   / _ \ / _` |/ _` | | | | |/ _` | __/ _` |
@@ -55,92 +58,95 @@ h5_path = path_vars['h5_fin_path']
 h5_dir = os.path.dirname(h5_path)
 model_save_dir = path_vars['model_save_dir']
 plot_dir = path_vars['plot_dir']
+feature_pipeline_path = path_vars['feature_pipeline_path']
 
-
-# Load equal numbers of waveforms for pos,neg, split into train,test
-# Since positive samples are >> negative, we will subsample from them
-neg_path = '/sorted/neg'
-pos_path = '/sorted/pos'
-
-neg_waveforms = []
-pos_waveforms = []
-
-with tables.open_file(h5_path,'r') as h5:
-    #h5 = tables.open_file(h5_path, 'r')
-    for x in h5.iter_nodes(neg_path):
-        neg_waveforms.append(x[:])
-    for x in h5.iter_nodes(pos_path):
-        pos_waveforms.append(x[:])
-
-neg_waveforms = np.concatenate(neg_waveforms, axis=0)
-pos_waveforms = np.concatenate(pos_waveforms, axis=0)
-
-neg_label = [0]*neg_waveforms.shape[0]
-pos_label = [1]*pos_waveforms.shape[0]
-fin_labels = np.concatenate([neg_label, pos_label])
-
+## Load equal numbers of waveforms for pos,neg, split into train,test
+## Since positive samples are >> negative, we will subsample from them
+#neg_path = '/sorted/neg'
+#pos_path = '/sorted/pos'
+#
+#neg_waveforms = []
+#pos_waveforms = []
+#
+#with tables.open_file(h5_path,'r') as h5:
+#    #h5 = tables.open_file(h5_path, 'r')
+#    for x in h5.iter_nodes(neg_path):
+#        neg_waveforms.append(x[:])
+#    for x in h5.iter_nodes(pos_path):
+#        pos_waveforms.append(x[:])
+#
+#neg_waveforms = np.concatenate(neg_waveforms, axis=0)
+#pos_waveforms = np.concatenate(pos_waveforms, axis=0)
+#
+#neg_label = [0]*neg_waveforms.shape[0]
+#pos_label = [1]*pos_waveforms.shape[0]
+#fin_labels = np.concatenate([neg_label, pos_label])
+#fin_data = np.concatenate([neg_waveforms, pos_waveforms])
 
 ############################################################
 # Train classifier
 ############################################################
 
-def zscore_custom(x):
-    return zscore(x, axis=-1)
+#def zscore_custom(x):
+#    return zscore(x, axis=-1)
+#
+#zscore_transform = FunctionTransformer(zscore_custom)
+#
+#energy = np.sqrt(np.sum(fin_data**2, axis = -1))/fin_data.shape[-1]
+#amplitude = np.max(np.abs(fin_data), axis=-1)
+#
+#zscore_fin_data = zscore_transform.transform(fin_data)
+#pca_obj = pca(n_components=10).fit(zscore_fin_data[::100])
+#print(f'Explained variance : {np.sum(pca_obj.explained_variance_ratio_)}')
+#pca_data = pca_obj.transform(zscore_fin_data)
+#
+## Calculate autocorrelation of dejittered slices to attempt to remove 
+## periodic noise
+#slices_autocorr = fftconvolve(zscore_fin_data, zscore_fin_data, axes = -1)
+## Perform PCA on scaled autocorrelations
+#pca_autocorr_obj = pca(n_components=2).fit(slices_autocorr[::100])
+#pca_autocorr = pca_autocorr_obj.transform(slices_autocorr)
+#
+## Cross-correlation with average zscore pca positive components
+#zscore_pos_waveforms = zscore(pos_waveforms[::100], axis=-1)
+#zscore_pos_pca_obj = pca(n_components = 3).fit(zscore_pos_waveforms)
+#zscore_pos_pca = zscore_pos_pca_obj.transform(zscore_pos_waveforms)
+#zscore_pos_reconstructed = zscore_pos_pca_obj.inverse_transform(zscore_pos_pca)
+#mean_template = zscore_pos_reconstructed.mean(axis=0)
+#slices_template_corr = fftconvolve(zscore_fin_data, 
+#        np.tile(mean_template, (zscore_fin_data.shape[0],1)), 
+#        axes = -1)
+## Perform PCA on cross-correlations 
+#pca_template_corr_obj = pca(n_components=2).fit(slices_template_corr[::100])
+#pca_template_corr = pca_template_corr_obj.transform(slices_template_corr)
+#
+#feature_dict = dict([
+#        ('pca' , pca_data),
+#        ('energy' , energy[:,np.newaxis]),
+#        ('amplitude' , amplitude[:,np.newaxis]),
+#        ('autocorr_pc', pca_autocorr),
+#        ('template_corr_pc', pca_template_corr)
+#        ])
+## Get labels for each feature to use for SHAP later
+#feature_labels = [[f'{x}_{num}' for num,x in enumerate([key]*val.shape[1])] \
+#        for key,val in feature_dict.items()]
+#feature_labels = [x for y in feature_labels for x in y]
+#feature_details = {key:val.shape for key,val in feature_dict.items()}
+#feat_str = str("".join([key+str(val) for key,val in feature_details.items()]))
+##d=hashlib.md5(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
+#d=hashlib.sha256(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
+#feature_hash= d.decode('ascii')[:6]
+#
+#all_features = np.concatenate([val for val in feature_dict.values()], axis = 1)
+#
+#scaler_obj = StandardScaler().fit(all_features)
+#X = scaler_obj.transform(all_features)
+#y = fin_labels
 
-zscore_transform = FunctionTransformer(zscore_custom)
+X_raw, y = return_data()
 
-fin_data = np.concatenate([neg_waveforms, pos_waveforms])
-
-energy = np.sqrt(np.sum(fin_data**2, axis = -1))/fin_data.shape[-1]
-amplitude = np.max(np.abs(fin_data), axis=-1)
-
-zscore_fin_data = zscore_transform.transform(fin_data)
-pca_obj = pca(n_components=10).fit(zscore_fin_data[::100])
-print(f'Explained variance : {np.sum(pca_obj.explained_variance_ratio_)}')
-pca_data = pca_obj.transform(zscore_fin_data)
-
-# Calculate autocorrelation of dejittered slices to attempt to remove 
-# periodic noise
-slices_autocorr = fftconvolve(zscore_fin_data, zscore_fin_data, axes = -1)
-# Perform PCA on scaled autocorrelations
-pca_autocorr_obj = pca(n_components=2).fit(slices_autocorr[::100])
-pca_autocorr = pca_autocorr_obj.transform(slices_autocorr)
-
-# Cross-correlation with average zscore pca positive components
-zscore_pos_waveforms = zscore(pos_waveforms[::100], axis=-1)
-zscore_pos_pca_obj = pca(n_components = 3).fit(zscore_pos_waveforms)
-zscore_pos_pca = zscore_pos_pca_obj.transform(zscore_pos_waveforms)
-zscore_pos_reconstructed = zscore_pos_pca_obj.inverse_transform(zscore_pos_pca)
-mean_template = zscore_pos_reconstructed.mean(axis=0)
-slices_template_corr = fftconvolve(zscore_fin_data, 
-        np.tile(mean_template, (zscore_fin_data.shape[0],1)), 
-        axes = -1)
-# Perform PCA on cross-correlations 
-pca_template_corr_obj = pca(n_components=2).fit(slices_template_corr[::100])
-pca_template_corr = pca_template_corr_obj.transform(slices_template_corr)
-
-feature_dict = dict([
-        ('pca' , pca_data),
-        ('energy' , energy[:,np.newaxis]),
-        ('amplitude' , amplitude[:,np.newaxis]),
-        ('autocorr_pc', pca_autocorr),
-        ('template_corr_pc', pca_template_corr)
-        ])
-# Get labels for each feature to use for SHAP later
-feature_labels = [[f'{x}_{num}' for num,x in enumerate([key]*val.shape[1])] \
-        for key,val in feature_dict.items()]
-feature_labels = [x for y in feature_labels for x in y]
-feature_details = {key:val.shape for key,val in feature_dict.items()}
-feat_str = str("".join([key+str(val) for key,val in feature_details.items()]))
-#d=hashlib.md5(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
-d=hashlib.sha256(feat_str.encode('utf-8')).digest(); d=base64.b64encode(d);
-feature_hash= d.decode('ascii')[:6]
-
-all_features = np.concatenate([val for val in feature_dict.values()], axis = 1)
-
-scaler_obj = StandardScaler().fit(all_features)
-X = scaler_obj.transform(all_features)
-y = fin_labels
+feature_pipeline = load(feature_pipeline_path)
+X = feature_pipeline.transform(X_raw)
 
 X_train, X_test, y_train, y_test = \
     train_test_split(X, y, test_size=0.5, random_state=1)
