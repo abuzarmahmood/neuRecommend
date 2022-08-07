@@ -9,6 +9,11 @@ AM data contains 35M sorted spikes, and 53M unsorted spikes (from a subset of se
 Pooling the lab, will likely have on the order of 100M waveforms and a 
 few 100G of data (if we also include spiketimes).
 
+Perhaps we can aim for a 2GB dataset, half and half for spikes and noise.
+Add maximum diversity of both noise and spike clusters (i.e. if we have a 
+total of 2000 neurons, and space for 100,000 waveforms, then every neuron
+should contribute 100,000/2000 waveforms if possible)
+
  ____                 _       _                     _ 
 / ___|  ___ _ __ __ _| |_ ___| |__  _ __   __ _  __| |
 \___ \ / __| '__/ _` | __/ __| '_ \| '_ \ / _` |/ _` |
@@ -51,3 +56,16 @@ Data usage:
         do we want to use all waveforms? 
     - Can we intelligently subset the data to make training faster?
     - Can we generate templates from neurons and use that instead of raw waveforms
+
+########################################
+Augmented Labelling
+########################################
+
+- Initially, we need some examples of non-unit waveforms to begin parsing 
+    the unsorted data. This will likely have to be done in a manual fashion.
+- Probably the easiest way to do this will be to go through plots for recordings
+    from which data is being taken and select clusters with NO units and JUST NOISE.
+- Following this, clusters with highest probability for either cluster will be 
+    suggested to user for labelling.
+- Once suggested labels have been confirmed, they can be incorporated
+- And the process repeated until all data is labelled
