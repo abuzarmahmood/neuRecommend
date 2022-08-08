@@ -48,3 +48,11 @@ to actually performing clustering
     - Approches:
         - Adding during spike sorting
         - Using semi-supervised methods to iteratively label more data
+
+############################################################
+## Experimentation, Model Registry, Data Availability
+############################################################
+Experimentation and model + data tracking is done on Neptune.ai.
+These details are not currently available publicly.
+Dataset used here can be accessed at
+https://drive.google.com/drive/folders/1i1WPL7gt0ckvpuGVoZKfnu27bRRVUQEX?usp=sharing
