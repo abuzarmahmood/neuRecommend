@@ -4,7 +4,7 @@ import os
 import json
 
 def return_data():
-    with open('path_vars.json','r') as path_file:
+    with open('./params/path_vars.json','r') as path_file:
         path_vars = json.load(path_file)
 
     h5_path = path_vars['h5_fin_path']

@@ -30,7 +30,7 @@ import neptune.new as neptune
 #| |__| (_) | (_| | (_| | | |_| | (_| | || (_| |
 #|_____\___/ \__,_|\__,_| |____/ \__,_|\__\__,_|
 ############################################################
-with open('path_vars.json','r') as path_file:
+with open('./params/path_vars.json','r') as path_file:
     path_vars = json.load(path_file)
 
 h5_path = path_vars['h5_fin_path']
@@ -58,7 +58,7 @@ X_train, X_val, y_train, y_val = \
     train_test_split(X_train, y_train, test_size=0.25, random_state=1)
 
 ########################################
-optim_params_path = '/media/bigdata/projects/neuRecommend/optim_params.json'
+optim_params_path = '../../model/optim_params.json'
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
 
@@ -162,9 +162,7 @@ for this_prob in wanted_probs:
 fig, ax = plt.subplots(1, len(wanted_probs), sharey=True,
                        figsize=(13, 2))
 for num in range(len(wanted_probs)):
-    # ax[0,num].plot(fin_data[nrn_inds[num]])
-    # ax[1,num].plot(fin_data[noise_inds[num]])
-    this_dat = zscore(fin_data[inds[num]], axis=-1)
+    this_dat = zscore(X_raw[inds[num]], axis=-1)
     flip_bool = np.vectorize(np.int)(np.sign(this_dat[:, 30]))
     this_dat = np.stack([x*-1 if this_bool == 1 else x
                          for x, this_bool in zip(this_dat, flip_bool)])
@@ -193,7 +191,7 @@ dump(pipeline, os.path.join(model_save_dir, f"xgboost_full_pipeline.dump"))
 # SHAP analysis 
 ############################################################
 feature_labels = [
-        [f'pca{i}' for i in range(8)],
+        [f'pca{i}' for i in range(X.shape[1]-2)],
         ['energy'],
         ['amplitude']
         ]
@@ -206,13 +204,15 @@ explainer = shap.TreeExplainer(clf)
 shap_values = explainer(Xd)
 
 plt.figure()
-shap.summary_plot(shap_values.values[::100], X_frame.iloc[::100])
+shap.summary_plot(shap_values.values[::100], X_frame.iloc[::100],
+        show = False)
 plt.savefig(os.path.join(plot_dir, f'xgboost_shap_summary.png'),
             dpi=300)
 plt.close()
 
 plt.figure()
-shap.plots.bar(shap_values, max_display = len(feature_labels))
+shap.plots.bar(shap_values, max_display = len(feature_labels),
+        show = False)
 ax = plt.gca()
 ticks = ax.get_yticks()[:len(feature_labels)]
 labels = [x._text for x in ax.get_yticklabels()[:len(feature_labels)]]
@@ -228,11 +228,15 @@ plt.close()
 ############################################################
 # Log to neptune 
 ############################################################
-with open('neptune_params.json','r') as path_file:
+with open('./params/neptune_params.json','r') as path_file:
     neptune_params = json.load(path_file)
 
-model = neptune.init_model_version(
-    model = 'WAV-CLF',
+#model = neptune.init_model_version(
+#    model = 'WAV-CLF',
+#    project= neptune_params['project'],
+#    api_token = neptune_params['api_token']
+#    )
+model = neptune.init_run(
     project= neptune_params['project'],
     api_token = neptune_params['api_token']
     )

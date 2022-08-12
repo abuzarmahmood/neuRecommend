@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     # We have to store the same PCA object to use later
     # Otherwise the features won't make sense to the classifier
-    pca_components = 8
+    pca_components = 3
     zscore_X_raw = zscore_transform.transform(X_raw)
     pca_obj = pca(n_components=pca_components).fit(zscore_X_raw[::100])
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # Write out pipeline
     ############################################################
 
-    with open('path_vars.json','r') as path_file:
+    with open('./params/path_vars.json','r') as path_file:
         path_vars = json.load(path_file)
     model_save_dir = path_vars['model_save_dir']
 
