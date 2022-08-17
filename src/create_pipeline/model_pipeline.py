@@ -62,7 +62,7 @@ optim_params_path = '../../model/optim_params.json'
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
 
-clf = xgb.XGBClassifier(**best_params)
+clf = xgb.XGBClassifier(**best_params, n_jobs = 1)
 
 train_start = time()
 clf.fit(X_train, y_train)
@@ -108,6 +108,10 @@ scaled_cumu_false = cumu_false/np.max(cumu_false)
 true_mean_thresh_inds = true_mean_val >= wanted_thresh
 highest_thresh = np.max(thresh_vec[true_mean_thresh_inds])
 best_false = scaled_cumu_false[np.argmin(np.abs(proba-highest_thresh))]
+
+thresh_out_path = os.path.join(model_save_dir, 'proba_threshold.json')
+with open(thresh_out_path, 'w') as outfile:
+    json.dump(dict(threshold = highest_thresh), outfile)
 
 fin_val_pred = val_proba > highest_thresh
 labels = ['true_neg','false_neg','false_pos','true_pos']
