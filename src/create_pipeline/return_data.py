@@ -3,15 +3,14 @@ import numpy as np
 import os
 import json
 
+params_dir = '/media/bigdata/projects/neuRecommend/src/create_pipeline/params'
+
+
 def return_data():
-    with open('./params/path_vars.json','r') as path_file:
+    with open(os.path.join(params_dir, 'path_vars.json'), 'r') as path_file:
         path_vars = json.load(path_file)
 
     h5_path = path_vars['h5_fin_path']
-    h5_dir = os.path.dirname(h5_path)
-    model_save_dir = path_vars['model_save_dir']
-    plot_dir = path_vars['plot_dir']
-
 
     # Load equal numbers of waveforms for pos,neg, split into train,test
     # Since positive samples are >> negative, we will subsample from them
@@ -21,8 +20,7 @@ def return_data():
     neg_waveforms = []
     pos_waveforms = []
 
-    with tables.open_file(h5_path,'r') as h5:
-        #h5 = tables.open_file(h5_path, 'r')
+    with tables.open_file(h5_path, 'r') as h5:
         for x in h5.iter_nodes(neg_path):
             neg_waveforms.append(x[:])
         for x in h5.iter_nodes(pos_path):
