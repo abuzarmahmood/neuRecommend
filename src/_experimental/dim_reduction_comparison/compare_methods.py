@@ -1,89 +1,16 @@
 import numpy as np
-from keras import backend as K
-from keras.callbacks import EarlyStopping
-from keras import regularizers
-from keras.models import Model
-from keras.layers import Input, Dense
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import explained_variance_score
 from sklearn.decomposition import PCA
+# from sklearn.neural_network import MLPRegressor
+from keras_autoencoder import autoencoder_class
 import umap
+from umap.parametric_umap import ParametricUMAP
 import sys
 from time import time
 from tqdm import trange
 load_data_path = '/media/bigdata/projects/neuRecommend/src/create_pipeline'
 sys.path.append(load_data_path)
-
-
-class autoencoder_class(self):
-    """
-    Autoencoder constructed from sklearn.neural_network.MLPRegressor
-    """
-
-    def __init__(self, input_shape):
-        self.input_shape = input_shape
-        self.model = self.create_model(input_shape)
-
-    def create_model(self, input_shape):
-        """
-        Generate autoencoder according to input shape and save
-        both autoencoder and encoder models
-        """
-        # Define the input layer
-        input_layer = Input(shape=(input_shape,))
-
-        # Define the encoder
-        encoded = Dense(500, activation='relu')(input_layer)
-        encoded = Dense(250, activation='relu')(encoded)
-        encoded = Dense(125, activation='relu')(encoded)
-        encoded = Dense(50, activation='relu')(encoded)
-        encoded = Dense(2, activation='relu')(encoded)
-
-        # Define the decoder
-        decoded = Dense(50, activation='relu')(encoded)
-        decoded = Dense(125, activation='relu')(decoded)
-        decoded = Dense(250, activation='relu')(decoded)
-        decoded = Dense(500, activation='relu')(decoded)
-        decoded = Dense(input_shape, activation='relu')(decoded)
-
-        # Define the model
-        autoencoder = Model(input_layer, decoded)
-
-        # Compile the model
-        autoencoder.compile(optimizer='adam', loss='mse')
-
-        # Define the encoder model
-        encoder = Model(input_layer, encoded)
-
-        self.autoencoder = autoencoder
-        self.encoder = encoder
-
-    def fit(self,
-            data,
-            epochs=100,
-            batch_size=256,
-            shuffle=True,
-            validation_split=0.2):
-        """
-        Fit the autoencoder model to the data
-        """
-        self.autoencoder.fit(data, data,
-                             epochs=epochs,
-                             batch_size=batch_size,
-                             shuffle=shuffle,
-                             validation_split=validation_split,
-                             callbacks=[EarlyStopping(monitor='val_loss', patience=10)])
-
-    def transform(self, data):
-        """
-        Transform the data using the encoder model
-        """
-        return self.encoder.predict(data)
-
-    def inverse_transform(self, data):
-        """
-        Recreate the data using the autoencoder model
-        """
-        return self.autoencoder.predict(data)
 
 
 class dim_red_comparison():
@@ -106,8 +33,41 @@ class dim_red_comparison():
         data: numpy array of shape (n_samples, n_features)
         labels: numpy array of shape (n_samples, )
         """
-        self.data = data
+        self.data = self.keep_pca_dims(self.zscore(data))
         self.labels = labels
+        self.data = self.data[::10]
+        self.labels = self.labels[::10]
+        self.split_data()
+
+
+    # ============================================================
+    # Preprocessing
+    def zscore(self, data):
+        """
+        Zscore individual datapoints
+        """
+        return (data - np.mean(data, axis=1)[:, None])/np.std(data, axis=1)[:, None]
+
+    def keep_pca_dims(self, data, explained_variance_threshold=0.95):
+        """
+        Return transformed data with only the principal components that explain 
+        a certain amount of variance
+        """
+        pca = PCA().fit(data)
+        cumsum = np.cumsum(pca.explained_variance_ratio_)
+        n_components = np.argmax(cumsum >= explained_variance_threshold) + 1
+        pca_data = pca.transform(data)[:, :n_components]
+        return pca_data
+
+    def split_data(self, test_size=0.5):
+        """
+        Split data into test and train sets and store as attributes
+        """
+        if 'data' not in dir(self):
+            raise AttributeError('No data attribute found. Please initialize the class with data and labels')
+        else:
+            self.X_train, self.X_test, self.y_train, self.y_test = \
+                    train_test_split(self.data, self.labels, test_size=test_size)
 
     # Define Models
     # ============================================================
@@ -124,7 +84,7 @@ class dim_red_comparison():
         Autoencoder constructed from sklearn.neural_network.MLPRegressor
         """
         print(f'Creating Autoencoder with {n_components} components')
-        autoencoder = autoencoder_class(self.data.shape[1])
+        autoencoder = autoencoder_class(self.data.shape[1], n_components)
         return autoencoder
 
     def umap(self, n_components=2):
@@ -132,7 +92,20 @@ class dim_red_comparison():
         Uniform Manifold Approximation and Projection.
         """
         print(f'Creating UMAP with {n_components} components')
-        reducer = umap.UMAP(n_components=n_components)
+        reducer = umap.UMAP(
+                n_components=n_components,
+                verbose=True)
+        return reducer
+
+    def parametric_umap(self, n_components=2):
+        """
+        Parametric UMAP
+        """
+        print(f'Creating Parametric UMAP with {n_components} components')
+        reducer = ParametricUMAP(
+                n_components=n_components,
+                parametric_reconstruction=True,
+                )
         return reducer
 
     # ============================================================
@@ -144,8 +117,12 @@ class dim_red_comparison():
         Fit the model to the data and record the time
         """
         print(f'Fit method: {model}')
+        print(f'X_train shape: {self.X_train.shape}')
         start = time()
-        model.fit(self.data)
+        if not 'MLPRegressor' in model.__repr__(): 
+            model = model.fit(self.X_train)
+        else:
+            model = model.fit(self.X_train, self.X_train)
         end = time()
         return model, end - start
 
@@ -154,8 +131,9 @@ class dim_red_comparison():
         Transform the data with the model and record the time
         """
         print(f'Transform method: {model}')
+        print(f'X_test shape: {self.X_test.shape}')
         start = time()
-        transformed_data = model.transform(self.data)
+        transformed_data = model.transform(self.X_test)
         end = time()
         return transformed_data, end - start
 
@@ -168,14 +146,13 @@ class dim_red_comparison():
 
     def calculate_variance_explained(
             self,
-            original_data,
-            transformed_data,
+            reconstructed_data,
             fitted_model):
         """
         Calculate the variance explained by the transformed data
         """
         print(f'Calculating variance for model: {fitted_model}')
-        return explained_variance_score(original_data, transformed_data)
+        return explained_variance_score(self.X_test, reconstructed_data)
 
     def run_methods_for_n_components(self, n_components, model_name):
         """
@@ -187,6 +164,8 @@ class dim_red_comparison():
             model = self.autoencoder(n_components=n_components)
         elif model_name == 'umap':
             model = self.umap(n_components=n_components)
+        elif model_name == 'parametric_umap':
+            model = self.parametric_umap(n_components=n_components)
         else:
             print('Model not found')
             return
@@ -194,7 +173,6 @@ class dim_red_comparison():
         fitted_model, fit_time = self.fit_method(model)
         transformed_data, transform_time = self.transform_method(fitted_model)
         variance = self.calculate_variance_explained(
-            self.data,
             self.reconstruct_data(fitted_model, transformed_data),
             fitted_model)
         return fit_time, transform_time, variance
