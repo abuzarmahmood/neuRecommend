@@ -25,7 +25,7 @@ from scipy.stats import zscore
 import numpy as np
 from sklearn.decomposition import PCA as pca
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
-from joblib import dump, load
+from joblib import dump
 import os
 import json
 
@@ -67,11 +67,12 @@ class AmpFeature(BaseEstimator, TransformerMixin):
 def zscore_custom(x):
     return zscore(x, axis=-1)
 
-zscore_transform = FunctionTransformer(zscore_custom)
-
 
 if __name__ == "__main__":
     X_raw, y = return_data()
+
+    zscore_transform = FunctionTransformer(zscore_custom)
+    log_transform = FunctionTransformer(np.log, validate=True)
 
     # We have to store the same PCA object to use later
     # Otherwise the features won't make sense to the classifier
@@ -86,12 +87,26 @@ if __name__ == "__main__":
         ]
     )
 
+    energy_pipeline = Pipeline(
+            steps=[
+                ('energy', EnergyFeature()),
+                ('log', log_transform),
+            ]
+        )
+
+    amplitude_pipeline = Pipeline(
+        steps=[
+            ('amplitude', AmpFeature()),
+            ('log', log_transform),
+        ]
+    )
+
     collect_feature_pipeline = FeatureUnion(
         n_jobs=1,
         transformer_list=[
             ('pca_features', pca_pipeline),
-            ('energy', EnergyFeature()),
-            ('amplitude', AmpFeature()),
+            ('energy', energy_pipeline),
+            ('amplitude', amplitude_pipeline),
         ]
     )
 

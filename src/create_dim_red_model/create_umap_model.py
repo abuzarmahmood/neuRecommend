@@ -1,104 +1,29 @@
-import feature_engineering_pipeline as fep
-from return_data import return_data
-import numpy as np
 import os
 import json
-from sklearn.decomposition import PCA as pca
-from sklearn.pipeline import FeatureUnion, Pipeline
-from sklearn.preprocessing import FunctionTransformer, StandardScaler
 from umap.parametric_umap import ParametricUMAP
-from joblib import dump
+from joblib import load
 
 import sys
 sys.path.append('../create_pipeline')
+from return_data import return_data
+from feature_engineering_pipeline import * 
 
-with open('./params/path_vars.json', 'r') as path_file:
+with open('../create_pipeline/params/path_vars.json', 'r') as path_file:
     path_vars = json.load(path_file)
+model_save_dir = path_vars['model_save_dir']
+feature_pipeline_path = path_vars['feature_pipeline_path']
 
 ############################################################
 # Feature Engineering
 ############################################################
 
+# Even though Amplitude and Energy are almost perfectly
+# correlated, apparently having both of them helps the 
+# XGBoost model. So we keep them both.
+# Refer to Neptune.AI logs for more details.
 X_raw, y = return_data()
-
-# Zscore data
-zscore_X_raw = fep.zscore_transform.transform(X_raw)
-
-# PCA: Reduce to components that preserve 95% of the variance
-max_components = 15
-pca_obj = pca(n_components=max_components).fit(zscore_X_raw[::100])
-wanted_components = np.where(
-    np.cumsum(pca_obj.explained_variance_ratio_) > 0.95)[0][0]
-# Recreate pca_obj with wanted_components for use in Pipeline
-pca_obj = pca(n_components=wanted_components).fit(zscore_X_raw[::100])
-pca_data = pca_obj.transform(zscore_X_raw)
-
-# Create Pipeline
-log_transform = FunctionTransformer(np.log, validate=True)
-
-# Energy and amplitude are almost perfectly correlated
-# Take only amplitude
-# energy_pipeline = Pipeline(
-#        steps=[
-#            ('energy', fep.EnergyFeature()),
-#            ('log', log_transform),
-#        ]
-#    )
-
-amplitude_pipeline = Pipeline(
-    steps=[
-        ('amplitude', fep.AmpFeature()),
-        ('log', log_transform),
-    ]
-)
-
-pca_pipeline = Pipeline(
-    steps=[
-        ('zscore', fep.zscore_transform),
-        ('pca', pca_obj),
-    ]
-)
-
-collect_feature_pipeline = FeatureUnion(
-    n_jobs=1,
-    transformer_list=[
-        # ('energy', energy_pipeline),
-        ('amplitude', amplitude_pipeline),
-        ('pca_features', pca_pipeline),
-    ]
-)
-
-all_features = collect_feature_pipeline.transform(X_raw)
-# Final scaling also has to stay constant
-scaler = StandardScaler().fit(all_features)
-
-feature_pipeline = Pipeline(
-    steps=[
-        ('get_features', collect_feature_pipeline),
-        ('scale_features', scaler)
-    ]
-)
-
-# Write out feature engineering pipeline
-#########################################
-
-dump(feature_pipeline,
-     os.path.join(
-         path_vars['model_save_dir'],
-         "umap_feature_pipeline.dump"
-     )
-     )
-
-# Run data through pipeline
+feature_pipeline = load(feature_pipeline_path)
 scaled_X = feature_pipeline.transform(X_raw)
-
-## Plot X and y together
-#fig, ax = plt.subplots(1, 2)
-#im = ax[0].imshow(scaled_X, aspect='auto',
-#                  interpolation='none', cmap='viridis')
-#plt.colorbar(im, ax=ax[0])
-#ax[1].plot(y, np.arange(len(y)))
-#plt.show()
 
 ############################################################
 # Train UMAP
