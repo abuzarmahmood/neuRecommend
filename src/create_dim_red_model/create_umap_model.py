@@ -117,4 +117,4 @@ transformed_data = parametric_umap.transform(scaled_X)
 
 # Save model
 parametric_umap.save(os.path.join(
-    path_vars['model_save_dir'], 'umap_model.pkl'))
+    path_vars['model_save_dir'], 'umap_model'))
