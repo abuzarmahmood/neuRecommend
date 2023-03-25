@@ -2,9 +2,7 @@
 https://docs.neptune.ai/getting-started/how-to-add-neptune-to-your-code
 """
 
-import tables
 import numpy as np
-from tqdm import tqdm
 import os
 import pylab as plt
 from time import time
@@ -200,38 +198,38 @@ feature_labels = [
         ['amplitude']
         ]
 feature_labels = [x for y in feature_labels for x in y]
-X_frame = pd.DataFrame(X, columns = feature_labels)
+#X_frame = pd.DataFrame(X, columns = feature_labels)
+#
+#Xd = xgb.DMatrix(X_frame, label=y)
+#pred = clf.predict(X_frame, output_margin=True)
+#explainer = shap.TreeExplainer(clf)
+#shap_values = explainer(Xd)
+#
+#plt.figure()
+#shap.summary_plot(shap_values.values[::100], X_frame.iloc[::100],
+#        show = False)
+#plt.savefig(os.path.join(plot_dir, f'xgboost_shap_summary.png'),
+#            dpi=300)
+#plt.close()
+#
+#plt.figure()
+#shap.plots.bar(shap_values, max_display = len(feature_labels),
+#        show = False)
+#ax = plt.gca()
+#ticks = ax.get_yticks()[:len(feature_labels)]
+#labels = [x._text for x in ax.get_yticklabels()[:len(feature_labels)]]
+#digits = [x.split(' ')[-1] for x in labels] 
+#label_ind = [int(x) for x in digits if x.isdigit()]
+#sorted_labels = [feature_labels[x] for x in label_ind]
+#plt.yticks(ticks, labels = sorted_labels)
+#plt.tight_layout()
+#plt.savefig(os.path.join(plot_dir, f'xgboost_shap_bar.png'),
+#            dpi=300) 
+#plt.close()
 
-Xd = xgb.DMatrix(X_frame, label=y)
-pred = clf.predict(X_frame, output_margin=True)
-explainer = shap.TreeExplainer(clf)
-shap_values = explainer(Xd)
-
-plt.figure()
-shap.summary_plot(shap_values.values[::100], X_frame.iloc[::100],
-        show = False)
-plt.savefig(os.path.join(plot_dir, f'xgboost_shap_summary.png'),
-            dpi=300)
-plt.close()
-
-plt.figure()
-shap.plots.bar(shap_values, max_display = len(feature_labels),
-        show = False)
-ax = plt.gca()
-ticks = ax.get_yticks()[:len(feature_labels)]
-labels = [x._text for x in ax.get_yticklabels()[:len(feature_labels)]]
-digits = [x.split(' ')[-1] for x in labels] 
-label_ind = [int(x) for x in digits if x.isdigit()]
-sorted_labels = [feature_labels[x] for x in label_ind]
-plt.yticks(ticks, labels = sorted_labels)
-plt.tight_layout()
-plt.savefig(os.path.join(plot_dir, f'xgboost_shap_bar.png'),
-            dpi=300) 
-plt.close()
-
-############################################################
-# Log to neptune 
-############################################################
+#############################################################
+## Log to neptune 
+#############################################################
 with open('./params/neptune_params.json','r') as path_file:
     neptune_params = json.load(path_file)
 
@@ -264,10 +262,11 @@ model["model/saved_model"].upload(
     os.path.join(model_save_dir, f"xgboost_classifier.dump"))
 model["model/saved_full_pipeline"].upload(
     os.path.join(model_save_dir, f"xgboost_full_pipeline.dump"))
-model['model/shap_summary'].upload(
-    os.path.join(plot_dir, f'xgboost_shap_summary.png') 
-    )
-model['model/shap_bar'].upload(
-    os.path.join(plot_dir, f'xgboost_shap_bar.png')        
-    )
+#model['model/shap_summary'].upload(
+#    os.path.join(plot_dir, f'xgboost_shap_summary.png') 
+#    )
+#model['model/shap_bar'].upload(
+#    os.path.join(plot_dir, f'xgboost_shap_bar.png')        
+#    )
+model["notes"] = "Single core fit and predict"
 model.stop()
