@@ -2,7 +2,6 @@ import feature_engineering_pipeline as fep
 from return_data import return_data
 import numpy as np
 import os
-import pylab as plt
 import json
 from sklearn.decomposition import PCA as pca
 from sklearn.pipeline import FeatureUnion, Pipeline
@@ -22,13 +21,6 @@ with open('./params/path_vars.json', 'r') as path_file:
 
 X_raw, y = return_data()
 
-#energy_raw = fep.EnergyFeature().fit_transform(X_raw)
-#amplitude_raw = fep.AmpFeature().fit_transform(X_raw)
-
-# Log transform to make values more manageable
-#energy = np.log(energy_raw)
-#amplitude = np.log(amplitude_raw)
-
 # Zscore data
 zscore_X_raw = fep.zscore_transform.transform(X_raw)
 
@@ -37,6 +29,7 @@ max_components = 15
 pca_obj = pca(n_components=max_components).fit(zscore_X_raw[::100])
 wanted_components = np.where(
     np.cumsum(pca_obj.explained_variance_ratio_) > 0.95)[0][0]
+# Recreate pca_obj with wanted_components for use in Pipeline
 pca_obj = pca(n_components=wanted_components).fit(zscore_X_raw[::100])
 pca_data = pca_obj.transform(zscore_X_raw)
 
@@ -86,9 +79,8 @@ feature_pipeline = Pipeline(
     ]
 )
 
-############################################################
-# Write out pipeline
-############################################################
+# Write out feature engineering pipeline
+#########################################
 
 dump(feature_pipeline,
      os.path.join(
@@ -97,17 +89,8 @@ dump(feature_pipeline,
      )
      )
 
-# Concatenate features
-#cat_X = np.concatenate([energy, amplitude, pca_data], axis=1)
-#
-# Standardize data
-#scaler = StandardScaler().fit(cat_X)
-#scaled_X = scaler.transform(cat_X)
-
+# Run data through pipeline
 scaled_X = feature_pipeline.transform(X_raw)
-
-#cor_mat = np.corrcoef(scaled_X_pipeline.T, scaled_X.T)
-# plt.matshow(cor_mat);plt.show()
 
 ## Plot X and y together
 #fig, ax = plt.subplots(1, 2)
