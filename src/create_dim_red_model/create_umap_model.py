@@ -25,21 +25,27 @@ X_raw, y = return_data()
 feature_pipeline = load(feature_pipeline_path)
 scaled_X = feature_pipeline.transform(X_raw)
 
+polarity = np.sign(AmpFeature().transform(X_raw)).flatten()
+
 ############################################################
 # Train UMAP
 ############################################################
-n_components = 3
+# Train 2D UMAPs for each polarity separately
+n_components = 2
 
-parametric_umap = ParametricUMAP(
-    n_components=n_components,
-    verbose=True,
-)
+for this_polarity in [1, -1]:
+    print('Training UMAP for polarity: {}'.format(this_polarity))
+    parametric_umap = ParametricUMAP(
+        n_components=n_components,
+        verbose=True,
+    )
 
-trimming = 10
-parametric_umap.fit(scaled_X[::trimming])
+    trimming = 10
+    this_data = scaled_X[polarity == this_polarity]
+    parametric_umap.fit(this_data[::trimming])
 
-transformed_data = parametric_umap.transform(scaled_X)
+    transformed_data = parametric_umap.transform(scaled_X)
 
-# Save model
-parametric_umap.save(os.path.join(
-    path_vars['model_save_dir'], 'umap_model'))
+    # Save model
+    parametric_umap.save(os.path.join(
+        path_vars['model_save_dir'], 'umap_model_polarity_{}'.format(this_polarity)))
