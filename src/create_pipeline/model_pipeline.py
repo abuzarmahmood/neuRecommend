@@ -60,7 +60,7 @@ optim_params_path = '../../model/optim_params.json'
 with open(optim_params_path, 'r') as outfile:
     best_params = json.load(outfile)
 
-clf = xgb.XGBClassifier(**best_params, n_jobs = 1)
+clf = xgb.XGBClassifier(**best_params, n_jobs = -1)
 
 train_start = time()
 clf.fit(X_train, y_train)

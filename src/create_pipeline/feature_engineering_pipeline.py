@@ -55,7 +55,8 @@ class AmpFeature(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        amplitude = np.max(np.abs(X), axis=-1)
+        amp_ind = np.argmax(np.abs(X), axis=-1)
+        amplitude = X[np.arange(len(amp_ind)), amp_ind]
         amplitude = amplitude[:, np.newaxis]
         return amplitude
 
@@ -73,6 +74,7 @@ if __name__ == "__main__":
 
     zscore_transform = FunctionTransformer(zscore_custom)
     log_transform = FunctionTransformer(np.log, validate=True)
+    arcsinh_transform = FunctionTransformer(np.arcsinh, validate=True)
 
     # We have to store the same PCA object to use later
     # Otherwise the features won't make sense to the classifier
@@ -94,10 +96,12 @@ if __name__ == "__main__":
             ]
         )
 
+    # use arcsinh_transform for amplitude due to negative values
     amplitude_pipeline = Pipeline(
         steps=[
             ('amplitude', AmpFeature()),
-            ('log', log_transform),
+            ('arcsinh', arcsinh_transform),
+            #('log', log_transform),
         ]
     )
 
