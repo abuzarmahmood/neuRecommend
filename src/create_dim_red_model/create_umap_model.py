@@ -8,8 +8,13 @@ sys.path.append('../create_pipeline')
 from return_data import return_data
 from feature_engineering_pipeline import * 
 
-with open('../create_pipeline/params/path_vars.json', 'r') as path_file:
+params_dir = '../create_pipeline/params'
+with open(os.path.join(params_dir, 'path_vars.json'), 'r') as path_file:
     path_vars = json.load(path_file)
+with open(os.path.join(params_dir, 'data_params.json'), 'r') as path_file:
+    data_params = json.load(path_file)
+zero_ind = data_params['zero_ind']
+
 model_save_dir = path_vars['model_save_dir']
 feature_pipeline_path = path_vars['feature_pipeline_path']
 
@@ -25,7 +30,7 @@ X_raw, y = return_data()
 feature_pipeline = load(feature_pipeline_path)
 scaled_X = feature_pipeline.transform(X_raw)
 
-polarity = np.sign(AmpFeature().transform(X_raw)).flatten()
+polarity = np.sign(AmpFeature(zero_ind).transform(X_raw)).flatten()
 
 ############################################################
 # Train UMAP

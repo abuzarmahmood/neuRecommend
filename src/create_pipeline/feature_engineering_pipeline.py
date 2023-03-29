@@ -48,15 +48,16 @@ class EnergyFeature(BaseEstimator, TransformerMixin):
 
 
 class AmpFeature(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        pass
+    def __init__(self, zero_ind):
+        self.zero_ind = zero_ind
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X, y=None):
-        amp_ind = np.argmax(np.abs(X), axis=-1)
-        amplitude = X[np.arange(len(amp_ind)), amp_ind]
+        amplitude = X[:, self.zero_ind]
+        #amp_ind = np.argmax(np.abs(X), axis=-1)
+        #amplitude = X[np.arange(len(amp_ind)), amp_ind]
         amplitude = amplitude[:, np.newaxis]
         return amplitude
 
@@ -70,6 +71,10 @@ def zscore_custom(x):
 
 
 if __name__ == "__main__":
+    with open('./params/data_params.json', 'r') as path_file:
+        data_params = json.load(path_file)
+    zero_ind = data_params['zero_ind']
+
     X_raw, y = return_data()
 
     zscore_transform = FunctionTransformer(zscore_custom)
@@ -99,7 +104,7 @@ if __name__ == "__main__":
     # use arcsinh_transform for amplitude due to negative values
     amplitude_pipeline = Pipeline(
         steps=[
-            ('amplitude', AmpFeature()),
+            ('amplitude', AmpFeature(zero_ind)),
             ('arcsinh', arcsinh_transform),
             #('log', log_transform),
         ]
