@@ -11,8 +11,12 @@ sys.path.append('../create_pipeline')
 from feature_engineering_pipeline import *
 from return_data import return_data
 
-with open('../create_pipeline/params/path_vars.json', 'r') as path_file:
+params_dir = '../create_pipeline/params'
+with open(os.path.join(params_dir, 'path_vars.json'), 'r') as path_file:
     path_vars = json.load(path_file)
+with open(os.path.join(params_dir, 'data_params.json'), 'r') as path_file:
+    data_params = json.load(path_file)
+zero_ind = data_params['zero_ind']
 
 ############################################################
 # Load data and pipelines
@@ -28,7 +32,7 @@ umap_model_paths = glob(os.path.join(path_vars['model_save_dir'], 'umap_model*')
 umap_models = [load_ParametricUMAP(x) for x in umap_model_paths]
 
 # Split data by polarity
-polarity = np.sign(AmpFeature().transform(X_raw)).flatten()
+polarity = np.sign(AmpFeature(zero_ind).transform(X_raw)).flatten()
 
 unique_polarity = np.unique(polarity)
 sorted_model_paths = [[x for x in umap_model_paths if "_"+str(int(this_polarity)) in x] \
@@ -63,8 +67,8 @@ for num, this_plot_dat in enumerate(plot_dat):
         this_plot_dat[:, 1],
         alpha=0.1,
         c=c[num])
-    this_ax.set_xlabel('dim0')
-    this_ax.set_ylabel('dim1')
+    ax[num,0].set_xlabel('dim0')
+    ax[num,0].set_ylabel('dim1')
     plt.colorbar(scatter, ax=ax[num,0])
     #this_ax.legend(
     #    handles=scatter.legend_elements()[0],
