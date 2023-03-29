@@ -75,18 +75,18 @@ for num, this_plot_dat in enumerate(plot_dat):
     plt.colorbar(im[3], ax=ax[num,1])
 plt.show()
 
-fig, ax = plt.subplots(1, 3, figsize=(10, 5))
-inds = list(combinations(np.arange(3), 2))
-for num, (this_ind1, this_ind2) in enumerate(inds):
-    scatter = ax[num].scatter(
-        plot_dat[:, this_ind1],
-        plot_dat[:, this_ind2],
-        alpha=0.1,
-        c=c)
-    ax[num].set_xlabel('dim' + str(this_ind1))
-    ax[num].set_ylabel('dim' + str(this_ind2))
-    ax[num].legend(
-        handles=scatter.legend_elements()[0],
-        labels=['False', 'True'],
-    )
-plt.show()
+#fig, ax = plt.subplots(1, 3, figsize=(10, 5))
+#inds = list(combinations(np.arange(3), 2))
+#for num, (this_ind1, this_ind2) in enumerate(inds):
+#    scatter = ax[num].scatter(
+#        plot_dat[:, this_ind1],
+#        plot_dat[:, this_ind2],
+#        alpha=0.1,
+#        c=c)
+#    ax[num].set_xlabel('dim' + str(this_ind1))
+#    ax[num].set_ylabel('dim' + str(this_ind2))
+#    ax[num].legend(
+#        handles=scatter.legend_elements()[0],
+#        labels=['False', 'True'],
+#    )
+#plt.show()
