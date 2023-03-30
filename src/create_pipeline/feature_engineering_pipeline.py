@@ -118,6 +118,8 @@ if __name__ == "__main__":
             ('amplitude', amplitude_pipeline),
         ]
     )
+    feature_names = ['pca_{}'.format(i) for i in range(pca_components)] + \
+            ['energy', 'amplitude']
 
     all_features = collect_feature_pipeline.transform(X_raw)
     # Final scaling also has to stay constant
@@ -144,3 +146,8 @@ if __name__ == "__main__":
              "feature_engineering_pipeline.dump"
          )
          )
+
+    # Write out feature names
+    with open(os.path.join(model_save_dir, 'feature_names.json'), 'w') as f:
+        json.dump(feature_names, f)
+
