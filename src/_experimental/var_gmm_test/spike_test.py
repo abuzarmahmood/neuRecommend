@@ -41,6 +41,9 @@ ind_frame['cat_ind'] = ind_frame['labels'].astype(str) + \
     '_' + ind_frame['groups'].astype(str)
 ind_frame['cat_ind_fin'] = ind_frame['cat_ind'].astype('category').cat.codes
 
+# Only process spikes for now 
+ind_frame = ind_frame[ind_frame['labels'] == 1]
+
 ############################################################
 # Select Data
 ############################################################
@@ -96,7 +99,7 @@ estimator = \
     BayesianGaussianMixture(
         weight_concentration_prior_type="dirichlet_process",
         weight_concentration_prior=100000,
-        n_components=6,
+        n_components=8,
         reg_covar=0,
         init_params="random",
         max_iter=1500,
@@ -164,42 +167,42 @@ cluster_corr = np.corrcoef(cluster_probs.T)
 # Change diagonal to Nan
 #np.fill_diagonal(cluster_corr, np.nan)
 
-# Plot correlation matrix
-fig, ax = plt.subplots(1, 2)
-im = ax[0].matshow(cluster_corr, aspect='auto', interpolation='nearest')
-plt.colorbar(im, ax=ax[0])
-ax[1].matshow(cluster_corr > 0, aspect='auto', interpolation='nearest')
-plt.show()
+## Plot correlation matrix
+#fig, ax = plt.subplots(1, 2)
+#im = ax[0].matshow(cluster_corr, aspect='auto', interpolation='nearest')
+#plt.colorbar(im, ax=ax[0])
+#ax[1].matshow(cluster_corr > 0, aspect='auto', interpolation='nearest')
+#plt.show()
 
-# Cluster the cluster_corr using KMeans
-kmeans = KMeans(n_clusters=3, random_state=random_state).fit(cluster_corr)
-kmeans_labels = kmeans.labels_
-
-# Plot cluster_corr sorted by kmeans_labels
-sort_inds = np.argsort(kmeans_labels)
-sorted_cluster_corr = cluster_corr[sort_inds][:, sort_inds]
-fig, ax = plt.subplots(1, 1)
-im = ax.matshow(sorted_cluster_corr,
-                aspect='auto', interpolation='nearest')
-plt.colorbar(im, ax=ax)
-plt.show()
+## Cluster the cluster_corr using KMeans
+#kmeans = KMeans(n_clusters=3, random_state=random_state).fit(cluster_corr)
+#kmeans_labels = kmeans.labels_
+#
+## Plot cluster_corr sorted by kmeans_labels
+#sort_inds = np.argsort(kmeans_labels)
+#sorted_cluster_corr = cluster_corr[sort_inds][:, sort_inds]
+#fig, ax = plt.subplots(1, 1)
+#im = ax.matshow(sorted_cluster_corr,
+#                aspect='auto', interpolation='nearest')
+#plt.colorbar(im, ax=ax)
+#plt.show()
 
 ## Cluster the cluster_corr using AgglomerativeClustering
 # Perform agglomerative clustering
 Z = shc.linkage(cluster_corr, 'ward')
 
-# Plot the dendrograms
-fig,ax = plt.subplots(2,1)
-plt.sca(ax[0])
-shc.dendrogram(Z)
-
-# Reorder the rows of the matrix based on the clustering
-sorted_idx = shc.dendrogram(Z, no_plot=True)['leaves']
-sorted_matrix = cluster_corr[sorted_idx, :][:, sorted_idx]
-
-# Plot the sorted matrix
-ax[1].matshow(sorted_matrix, cmap='gray', aspect='auto')
-plt.show()
+## Plot the dendrograms
+#fig,ax = plt.subplots(2,1)
+#plt.sca(ax[0])
+#shc.dendrogram(Z)
+#
+## Reorder the rows of the matrix based on the clustering
+#sorted_idx = shc.dendrogram(Z, no_plot=True)['leaves']
+#sorted_matrix = cluster_corr[sorted_idx, :][:, sorted_idx]
+#
+## Plot the sorted matrix
+#ax[1].matshow(sorted_matrix, cmap='gray', aspect='auto')
+#plt.show()
 
 # Given linkage matrix, plot dendogram and merged clusters
 # at every level
@@ -250,7 +253,7 @@ def find_x_pos(new_Z):
     leaves = shc.dendrogram(new_Z[:,:-1], no_plot=True)['leaves']
     leave_x_pos = np.arange(len(leaves))
     # x_pos array  col1 = node, col2 = x_pos
-    x_pos = np.zeros((int(sum(Z[-2:,-1])) + 1,2))
+    x_pos = np.zeros((int(new_Z[-1,-1]) + 1, 2))
     x_pos[:,0] = np.arange(len(x_pos))
     #x_pos[:,0] = np.vectorize(np.int)(x_pos[:,0])
     x_pos[leaves,1] = leave_x_pos
@@ -263,6 +266,8 @@ def find_x_pos(new_Z):
 new_Z_levels = enumerate_levels(new_Z)[:,1]
 new_Z_x_pos = find_x_pos(new_Z)
 int_x_pos = np.vectorize(np.int)(new_Z_x_pos[:,1])
+
+from matplotlib.patches import ConnectionPatch
 
 # Plot waveforms along dendogram using levels and x_pos
 fig,ax = plt.subplots(np.max(new_Z_levels) + 1, 
@@ -284,6 +289,20 @@ for this_ax in ax.flatten():
     this_ax.spines['top'].set_visible(False)
     this_ax.spines['bottom'].set_visible(False)
     this_ax.spines['left'].set_visible(False)
+    this_ax.patch.set_alpha(0.0)
+# Connect each leaf to its parent
+for this_row in new_Z:
+    leaves = np.vectorize(np.int)(this_row[:2])
+    join = int(this_row[-1])
+    for this_leaf in leaves:
+        con = ConnectionPatch(xyA=(int_x_pos[this_leaf], new_Z_levels[this_leaf]),
+                              xyB=(int_x_pos[join], new_Z_levels[join]),
+                              coordsA="data", coordsB="data",
+                              axesA=ax[new_Z_levels[this_leaf], int_x_pos[this_leaf]],
+                              axesB=ax[new_Z_levels[join], int_x_pos[join]],
+                              color="black", alpha=0.5,
+                              zorder = 10)
+        ax[new_Z_levels[this_leaf], int_x_pos[this_leaf]].add_artist(con)
 plt.show()
 
 ## Cluster the cluster_corr using AgglomerativeClustering
