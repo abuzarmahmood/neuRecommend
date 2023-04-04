@@ -1,5 +1,3 @@
-from return_data import return_data
-from feature_engineering_pipeline import *
 from sklearn.mixture import BayesianGaussianMixture
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,6 +12,8 @@ from matplotlib.patches import ConnectionPatch
 import sys
 pipeline_dir = '/media/bigdata/projects/neuRecommend/src/create_pipeline'
 sys.path.append(pipeline_dir)
+from return_data import return_data
+from feature_engineering_pipeline import *
 
 params_dir = os.path.join(pipeline_dir, 'params')
 with open(os.path.join(params_dir, 'path_vars.json'), 'r') as path_file:
@@ -21,6 +21,9 @@ with open(os.path.join(params_dir, 'path_vars.json'), 'r') as path_file:
 
 random_state = 3
 rng = np.random.RandomState(random_state)
+
+plot_save_dir = \
+    '/media/bigdata/projects/neuRecommend/src/_experimental/var_gmm_test/plots'
 
 ############################################################
 # Helper functions for tree parsing
@@ -135,10 +138,19 @@ cluster_dat_list = [fin_data[i] for i in cluster_plot_inds]
 
 max_waves = 1000
 fig, ax = plt.subplots(wanted_clusters, 1,
-                       sharex=True, sharey=True)
-for this_dat, this_ax in zip(cluster_dat_list, ax):
+                       sharex=True, sharey=True,
+                       figsize = (5,10))
+for num, (this_dat, this_ax) in enumerate(zip(cluster_dat_list, ax.flatten())):
     this_ax.plot(this_dat[:max_waves].T, color='k', alpha=0.1)
-plt.show()
+    this_ax.set_ylabel('Voltage (uV)')
+    this_ax.set_title('Cluster {}'.format(num))
+ax[-1].set_xlabel('Time (arbitrary units)')
+fig.suptitle('Raw Waveforms')
+fig.savefig(
+        os.path.join(plot_save_dir, 'cluster_waves.png'),
+        dpi=300, bbox_inches='tight')
+plt.close(fig)
+#plt.show()
 
 ############################################################
 # Transform Data
@@ -155,11 +167,24 @@ scaled_data = scaler.fit_transform(transformed_data)
 pca_object = PCA(n_components=2)
 pca_data = pca_object.fit_transform(scaled_data)
 
-fig, ax = plt.subplots(1, 3)
+fig, ax = plt.subplots(1, 3, figsize = (10,5))
 ax[0].imshow(scaled_data, aspect='auto', interpolation='nearest')
 ax[1].imshow(pca_data, aspect='auto', interpolation='nearest')
 ax[2].scatter(*pca_data.T, s=2, alpha=0.5)
-plt.show()
+titles = ['Scaled Data', 'PCA Data', 'PCA Data']
+xlabels = ['Raw Features', 'PCA Components', 'PCA 1']
+ylabels = ['Samples', 'Samples', 'PCA 2']
+for this_ax, this_title, this_xlabel, this_ylabel in zip(
+        ax, titles, xlabels, ylabels):
+    this_ax.set_title(this_title)
+    this_ax.set_xlabel(this_xlabel)
+    this_ax.set_ylabel(this_ylabel)
+plt.tight_layout()
+fig.savefig(
+        os.path.join(plot_save_dir, 'raw_cluster_data.png'),
+        dpi=300)
+plt.close(fig)
+#plt.show()
 
 ############################################################
 # Cluster Data
@@ -197,7 +222,7 @@ fin_pred_labels[unwanted_inds] = new_labels
 
 # Plot clustered data
 cmap = plt.get_cmap('tab10')
-fig, ax = plt.subplots(1, 5)
+fig, ax = plt.subplots(1, 5, figsize = (15,5))
 sort_order = np.argsort(fin_pred_labels)
 ax[0].imshow(scaled_data[sort_order], aspect='auto', interpolation='nearest')
 ax[1].imshow(pca_data[sort_order], aspect='auto', interpolation='nearest')
@@ -211,16 +236,42 @@ ax[2].legend(np.unique(fin_pred_labels))
 ax[3].bar(np.arange(len(pred_frac)), pred_frac)
 ax[3].axhline(threshold, color='r', linestyle='--')
 ax[4].imshow(pred_prob[sort_order], aspect='auto', interpolation='nearest')
+titles = ['Raw Features','PCA Features', 'Clustered PCA Features',
+          'Cluster Fractions', 'Cluster Probabilities']
+xlabels = ['Features', 'PCA Components', 'PCA 1',
+           'Cluster #', 'Cluster #']
+ylabels = ['Samples', 'Samples', 'PCA 2',
+           'Fraction', 'Samples']
+for this_ax, this_title, this_xlab, this_ylab in zip(ax, titles, xlabels, ylabels):
+    this_ax.set_title(this_title)
+    this_ax.set_xlabel(this_xlab)
+    this_ax.set_ylabel(this_ylab)
+plt.tight_layout()
+fig.savefig(
+        os.path.join(plot_save_dir, 'clustered_cluster_data.png'),
+        dpi=300)
+plt.close(fig)
+#plt.show()
 
 # Plot all clusters individually
 cluster_plot_inds = [np.where(fin_pred_labels == x)[0]
                      for x in np.unique(fin_pred_labels)]
 cluster_dat_list = [wanted_data[i] for i in cluster_plot_inds]
 fig, ax = plt.subplots(len(cluster_plot_inds), 1,
-                       sharex=True, sharey=True)
-for this_dat, this_ax in zip(cluster_dat_list, ax):
+                       sharex=True, sharey=True,
+                       figsize = (5,2*len(cluster_dat_list)))
+for num, (this_dat, this_ax) in enumerate(zip(cluster_dat_list, ax)):
     this_ax.plot(this_dat[:max_waves].T, color='k', alpha=0.1)
-plt.show()
+    this_ax.set_title('Cluster {}'.format(num))
+    this_ax.set_ylabel('Voltage (uV)')
+ax[-1].set_xlabel('Time (arbitrary units)')
+fig.suptitle('Clustered Waveforms')
+fig.savefig(
+        os.path.join(plot_save_dir, 'clustered_waveforms.png'),
+        dpi=300,
+        bbox_inches='tight')
+plt.close(fig)
+#plt.show()
 
 ############################################################
 # Post-processing on cluster results to handle over-splitting
@@ -286,4 +337,8 @@ for this_row in new_Z:
                               color="black", alpha=0.5,
                               zorder=10)
         ax[new_Z_levels[this_leaf], int_x_pos[this_leaf]].add_artist(con)
-plt.show()
+fig.savefig(
+        os.path.join(plot_save_dir, 'waveform_tree.png'),
+        dpi=300)
+plt.close(fig)
+#plt.show()
