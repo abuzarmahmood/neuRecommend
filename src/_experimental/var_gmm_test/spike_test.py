@@ -8,6 +8,7 @@ from sklearn.decomposition import PCA
 from scipy.cluster import hierarchy as shc
 import os
 from matplotlib.patches import ConnectionPatch
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
 import sys
 pipeline_dir = '/media/bigdata/projects/neuRecommend/src/create_pipeline'
@@ -86,7 +87,7 @@ def find_x_pos(new_Z):
     return x_pos
 
 def plot_sorted_cluster_corr(Z, cluster_corr):
-    fig, ax = plt.subplots(2, 1)
+    fig, ax = plt.subplots(2, 1, figsize = (5,8))
     plt.sca(ax[0])
     shc.dendrogram(Z)
 
@@ -96,7 +97,7 @@ def plot_sorted_cluster_corr(Z, cluster_corr):
 
     # Plot the sorted matrix
     ax[1].matshow(sorted_matrix, cmap='gray', aspect='auto')
-    plt.show()
+    return fig, ax
 
 ############################################################
 # Load Data
@@ -285,7 +286,26 @@ cluster_corr = np.corrcoef(cluster_probs.T)
 Z = shc.linkage(cluster_corr, 'ward')
 
 # Plot the dendrograms
-# plot_sorted_cluster_corr(Z, cluster_corr)
+fig, ax = plot_sorted_cluster_corr(Z, cluster_corr)
+# Add colorbar_ax to ax[1]
+divider = make_axes_locatable(ax[1])
+cax = divider.append_axes("right", size="5%", pad=0.05)
+cbar = fig.colorbar(ax[1].images[0], cax=cax, 
+                    label='Correlation Coefficient')
+# Remove ticks from ax[1]
+ax[1].set_xticks([])
+ax[1].set_yticks([])
+fig.suptitle('Cluster Correlation Dendrogram')
+ax[0].set_ylabel('Cluster Distances')
+#ax[0].set_xlabel('Cluster #')
+ax[1].set_ylabel('Cluster #')
+ax[1].set_xlabel('Cluster #')
+fig.savefig(
+        os.path.join(plot_save_dir, 'cluster_corr_dendrogram.png'),
+        dpi=300,
+        bbox_inches='tight')
+plt.close(fig)
+#plt.show()
 
 ############################################################
 # Given linkage matrix, plot dendogram and merged clusters
