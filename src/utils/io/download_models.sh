@@ -14,6 +14,12 @@ MODEL_DIR=${DIR_PATH}/model
 if [ ! -d "$MODEL_DIR" ]; then
     mkdir $MODEL_DIR
 fi
+
+# If MODEL_DIR is not empty, delete all files in it
+if [ "$(ls -A $MODEL_DIR)" ]; then
+    rm -r $MODEL_DIR/*
+fi
+
 echo Downloading models to ${MODEL_DIR}
 # Use gdown to download the model to MODEL_DIR
 # gdown -O <output_file> <link_to_file>
@@ -21,4 +27,5 @@ echo Downloading models to ${MODEL_DIR}
 gdown --folder $LINK_TO_DATA -O ${DIR_PATH}/
 
 # Move the downloaded model to the correct location
-mv ${DIR_PATH}/neuRecommend_models ${MODEL_DIR}
+mv ${DIR_PATH}/neuRecommend_models/* ${MODEL_DIR}
+rm -r ${DIR_PATH}/neuRecommend_models
