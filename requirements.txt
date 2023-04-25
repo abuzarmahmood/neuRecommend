@@ -1,3 +1,4 @@
+# Tested with python 3.8.13
 joblib==1.0.0
 keras==2.6.0
 numpy==1.19.5
@@ -7,4 +8,4 @@ scipy==1.4.1
 tables==3.6.1
 tqdm==4.45.0
 umap_learn==0.5.3
-xgboost==1.5.1
+xgboost==1.7.5
