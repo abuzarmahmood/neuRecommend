@@ -27,12 +27,14 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.neighbors import NeighborhoodComponentsAnalysis as NCA
 from collections import Counter
 from sklearn.linear_model import LogisticRegression as LR
+from sklearn.decomposition import PCA
+from scipy.spatial import distance
 
 import sys
 sys.path.append('/media/bigdata/projects/neuRecommend/src/create_pipeline')
 from feature_engineering_pipeline import *
 
-plot_dir = '/media/bigdata/projects/neuRecommend/src/_experimental/best_classification_times'
+plot_dir = '/media/bigdata/projects/neuRecommend/src/_experimental/best_classification_times/plots'
 if not os.path.exists(plot_dir):
     os.mkdir(plot_dir)
 
@@ -87,26 +89,145 @@ score_list = np.array(score_list)
 sort_inds = np.argsort(score_list)[::-1]
 coef_list = coef_list[sort_inds]
 score_list = score_list[sort_inds]
+mean_abs_coef = np.abs(coef_list).mean(axis=0)
+
+# Scale mean_abs_coef to be between 0 and 1
+mean_abs_coef = (mean_abs_coef - mean_abs_coef.min()) / (mean_abs_coef.max() - mean_abs_coef.min())
 
 # Plot
-fig,ax = plt.subplots(2,1, sharex=True)
+fig,ax = plt.subplots(3,1, sharex=True)
 ax[1].imshow(np.abs(coef_list), aspect='auto', cmap='viridis')
 ax[1].colorbar()
-ax[0].plot(np.abs(coef_list).mean(axis=0), '-x')
+ax[0].plot(mean_abs_coef, '-x')
 fig.suptitle('Logistic regression coefficients')
 ax[0].set_ylabel('Mean ABS coefficient')
 ax[1].set_ylabel('Run #')
 ax[1].set_xlabel('Timepoint')
-# plt.show()
-fig.savefig(os.path.join(plot_dir, 'logistic_regression_coefficients.png'))
-plt.close(fig)
-
-fig, ax = plt.subplots(2,1, sharex=True)
-cmap = plt.cm.get_cmap('viridis')
-for this_x, this_y in zip(X, y):
-        ax[0].plot(this_x, color=cmap(this_y),
-                 alpha = 0.01)
-ax[1].plot(np.abs(lr.coef_.flatten()))
-fig.suptitle('Logistic regression cofficients \n'
-             f'Accuracy: {lr.score(X, y)}')
+ax[2].imshow(coef_list, aspect='auto', cmap='viridis')
 plt.show()
+# fig.savefig(os.path.join(plot_dir, 'logistic_regression_coefficients.png'))
+# plt.close(fig)
+
+# PCA of coefficients
+pca_obj = PCA(n_components=6)
+pca_obj.fit(coef_list.T)
+pca_coef = pca_obj.transform(coef_list.T)
+
+plt.plot(pca_coef, linewidth=5, alpha=0.7)
+plt.show()
+
+# plt.plot(coef_list.T, alpha = 0.01, color='k')
+# plt.show()
+
+
+# Test projection using weighted and unweighted coefficients
+# fig, ax = plt.subplots(2,1, sharex=True)
+# cmap = plt.cm.get_cmap('viridis')
+# for this_x, this_y in zip(X, y):
+#         ax[0].plot(this_x, color=cmap(this_y),
+#                  alpha = 0.01)
+# ax[1].plot(np.abs(lr.coef_.flatten()))
+# fig.suptitle('Logistic regression cofficients \n'
+#              f'Accuracy: {lr.score(X, y)}')
+# plt.show()
+
+fig,ax = plt.subplots(2,1, sharex=True)
+ax[0].plot(pca_obj.components_.T)
+ax[1].plot(mean_abs_coef)
+plt.show()
+
+cos_dists = [distance.cosine(x, mean_abs_coef) for x in pca_obj.components_]
+
+unweighted_acc = []
+weighted_acc = []
+joint_acc = []
+weighted_pca_prob = []
+unweighted_pca_prob = []
+for i in trange(n_runs):
+    this_unit_inds = unit_inds[i]
+    this_dat = [norm_dat[x] for x in this_unit_inds]
+    this_labels = [np.ones(len(x)) * i for i, x in enumerate(this_dat)]
+    X = np.concatenate(this_dat)
+    y = np.concatenate(this_labels)
+
+    # Unweighted
+    pca_obj = PCA(n_components=6)
+    pca_obj.fit(X)
+    pca_proj = pca_obj.transform(X)
+    lr = LR()
+    lr.fit(pca_proj, y)
+    unweighted_acc.append(lr.score(pca_proj, y))
+
+    # weighted
+    # weighted_x = X * mean_abs_coef 
+    # weighted_pca_obj = PCA(n_components=3)
+    # weighted_pca_obj.fit(weighted_x)
+    # weighted_pca_proj = weighted_pca_obj.transform(weighted_x)
+    weighted_pca_proj = X @ pca_coef
+    lr = LR()
+    lr.fit(weighted_pca_proj, y)
+    weighted_acc.append(lr.score(weighted_pca_proj, y))
+
+    # # Joint
+    joint_pca_proj = np.concatenate(
+            [pca_proj[:,:3], weighted_pca_proj[:,:3]], axis=1) 
+    lr = LR()
+    lr.fit(joint_pca_proj, y)
+    joint_acc.append(lr.score(joint_pca_proj, y))
+
+
+unweighted_acc = np.array(unweighted_acc)
+weighted_acc = np.array(weighted_acc)
+joint_acc = np.array(joint_acc)
+all_acc = np.stack([unweighted_acc, weighted_acc, joint_acc])
+
+print(f'Unweighted accuracy: {unweighted_acc.mean()}')
+print(f'Weighted accuracy: {weighted_acc.mean()}')
+print(f'Joint accuracy: {joint_acc.mean()}')
+
+plt.hist(all_acc.T, bins=10, label=['Unweighted', 'Weighted', 'Joint'])
+plt.legend()
+plt.xlabel('Accuracy')
+plt.ylabel('Count')
+plt.title('Logistic regression accuracy...6 components per type')
+plt.savefig(os.path.join(plot_dir, 'logistic_regression_accuracy.png'))
+plt.close()
+# plt.show()
+
+plt.hist(unweighted_acc, bins=50, alpha=0.5, label='Unweighted')
+plt.hist(weighted_acc, bins=50, alpha=0.5, label='Weighted')
+plt.hist(joint_acc, bins=50, alpha=0.5, label='Joint')
+plt.legend()
+plt.show()
+
+fig, ax = plt.subplots(2,1)
+ax[0].scatter(unweighted_acc, weighted_acc, alpha=0.1, s = 2, color='k')
+# Plot x=y
+min_val = np.min([unweighted_acc.min(), weighted_acc.min()])
+max_val = np.max([unweighted_acc.max(), weighted_acc.max()])
+ax[0].plot([min_val, max_val], [min_val, max_val], color='r', linestyle='--')
+ax[0].set_xlabel('Unweighted accuracy')
+ax[0].set_ylabel('Weighted accuracy')
+acc_diff = unweighted_acc - weighted_acc
+mean_acc_diff = np.mean(acc_diff)
+median_acc_diff = np.median(acc_diff)
+ax[1].hist(acc_diff, bins = 50)
+ax[1].axvline(0, color='r', linestyle='--')
+# Plot arrow for median
+ax[1].annotate('Mean: {:.2f}'.format(mean_acc_diff), 
+               xy=(mean_acc_diff, 0), xytext=(mean_acc_diff, 10),
+            arrowprops=dict(facecolor='black', shrink=0.05),
+            )
+ax[1].set_xlabel('Unweighted - Weighted accuracy \n' +\
+        ' <- Weighted better | Unweighted better ->')
+ax[1].set_ylabel('Count')
+ax[0].set_aspect('equal')
+plt.tight_layout()
+plt.savefig(os.path.join(plot_dir, 'logistic_regression_accuracy_comparison.png'))
+plt.close()
+#plt.show()
+
+# fig, ax = plt.subplots(1,2,)# sharex=True, sharey=True)
+# ax[0].scatter(pca_proj[:,0], pca_proj[:,1], c=y, alpha=0.1)
+# ax[1].scatter(weighted_pca_proj[:,0], weighted_pca_proj[:,1], c=y, alpha=0.1)
+# plt.show()
