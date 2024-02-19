@@ -12,6 +12,7 @@ classification is best.
 Since knowing this would be most useful for waveforms of the 
 same amplitude, normalize the waveforms to the same amplitude.
 """
+
 import tables
 import os
 import numpy as np
@@ -112,9 +113,25 @@ plt.show()
 pca_obj = PCA(n_components=6)
 pca_obj.fit(coef_list.T)
 pca_coef = pca_obj.transform(coef_list.T)
+var_exp = pca_obj.explained_variance_ratio_
 
-plt.plot(pca_coef, linewidth=5, alpha=0.7)
-plt.show()
+# plt.plot(pca_coef, linewidth=5, alpha=0.7)
+fig, ax = plt.subplots(1,2, figsize=(15,5))
+for i, this_dat in enumerate(pca_coef.T):
+    ax[0].plot(this_dat, alpha=0.7, label=f'PC {i}', linewidth=5)
+ax[0].legend()
+# ax[0].imshow(pca_coef.T, aspect='auto', cmap='viridis')
+ax[0].set_title('PCA of logistic regression coefficient')
+ax[0].set_xlabel('Timepoint')
+ax[0].set_ylabel('PC value')
+ax[1].plot(np.cumsum(var_exp), '-x')
+ax[1].set_title('Explained variance')
+ax[1].set_xlabel('PC #')
+ax[1].set_ylabel('Cumulative Explained variance')
+# plt.show()
+fig.savefig(os.path.join(plot_dir, 'pca_of_logistic_regression_coefficients.png'),
+            bbox_inches='tight', dpi=300)
+plt.close(fig)
 
 # plt.plot(coef_list.T, alpha = 0.01, color='k')
 # plt.show()
@@ -181,6 +198,40 @@ weighted_acc = np.array(weighted_acc)
 joint_acc = np.array(joint_acc)
 all_acc = np.stack([unweighted_acc, weighted_acc, joint_acc])
 
+##############################
+acc_diff = weighted_acc - unweighted_acc
+diff_sort_inds = np.argsort(acc_diff)[::-1]
+n_top = 12
+top_diff_inds = diff_sort_inds[:n_top]
+top_diff_pairs = [unit_inds[x] for x in top_diff_inds] 
+
+# Plot top diff pairs
+cmap = plt.cm.get_cmap('tab10')
+n_rows = int(np.sqrt(n_top))
+n_cols = int(np.ceil(n_top / n_rows))
+fig, ax = plt.subplots(n_rows, n_cols, figsize=(15,10),
+                       sharex=True, sharey=True)
+for i, this_pair in enumerate(top_diff_pairs):
+    for j, this_unit in enumerate(this_pair):
+        mean_dat = norm_dat[this_unit].mean(axis=0)
+        std_dat = norm_dat[this_unit].std(axis=0)
+        # ax.flatten()[i].plot(norm_dat[this_unit].T, alpha=0.05, c = cmap(j))
+        ax.flatten()[i].plot(mean_dat, c = cmap(j))
+        ax.flatten()[i].fill_between(np.arange(len(mean_dat)),
+                                     y1=mean_dat - std_dat,
+                                     y2=mean_dat + std_dat,
+                                     alpha=0.5, color=cmap(j))
+        ax.flatten()[i].set_title(f'Units {", ".join([str(x) for x in this_pair])}' + '\n' +\
+                f'Delta acc: {acc_diff[top_diff_inds[i]]:.3f}')
+        ax.flatten()[i].axis('off')
+fig.suptitle('Top 12 pairs of units with highest weighted - unweighted accuracy')
+plt.savefig(os.path.join(plot_dir, 'top_12_pairs_of_units_with_highest_weighted_unweighted_accuracy.png'),
+            bbox_inches='tight', dpi=300)
+plt.close(fig)
+# plt.show()
+
+##############################
+
 print(f'Unweighted accuracy: {unweighted_acc.mean()}')
 print(f'Weighted accuracy: {weighted_acc.mean()}')
 print(f'Joint accuracy: {joint_acc.mean()}')
@@ -200,8 +251,8 @@ plt.hist(joint_acc, bins=50, alpha=0.5, label='Joint')
 plt.legend()
 plt.show()
 
-fig, ax = plt.subplots(2,1)
-ax[0].scatter(unweighted_acc, weighted_acc, alpha=0.1, s = 2, color='k')
+fig, ax = plt.subplots(2,1, figsize=(5,10))
+ax[0].scatter(unweighted_acc, weighted_acc, alpha=0.7, s = 2, color='k')
 # Plot x=y
 min_val = np.min([unweighted_acc.min(), weighted_acc.min()])
 max_val = np.max([unweighted_acc.max(), weighted_acc.max()])
@@ -214,16 +265,20 @@ median_acc_diff = np.median(acc_diff)
 ax[1].hist(acc_diff, bins = 50)
 ax[1].axvline(0, color='r', linestyle='--')
 # Plot arrow for median
-ax[1].annotate('Mean: {:.2f}'.format(mean_acc_diff), 
-               xy=(mean_acc_diff, 0), xytext=(mean_acc_diff, 10),
-            arrowprops=dict(facecolor='black', shrink=0.05),
-            )
+# ax[1].annotate('Mean: {:.2f}'.format(mean_acc_diff), 
+#                xy=(mean_acc_diff, 0), xytext=(mean_acc_diff, 10),
+#             arrowprops=dict(facecolor='black', shrink=0.05),
+#             )
 ax[1].set_xlabel('Unweighted - Weighted accuracy \n' +\
         ' <- Weighted better | Unweighted better ->')
 ax[1].set_ylabel('Count')
 ax[0].set_aspect('equal')
+ax[1].axis('off')
+ax[0].spines['top'].set_visible(False)
+ax[0].spines['right'].set_visible(False)
 plt.tight_layout()
-plt.savefig(os.path.join(plot_dir, 'logistic_regression_accuracy_comparison.png'))
+plt.savefig(os.path.join(plot_dir, 'logistic_regression_accuracy_comparison.png'),
+            bbox_inches='tight', dpi=300)
 plt.close()
 #plt.show()
 
