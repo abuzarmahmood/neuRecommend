@@ -9,14 +9,19 @@ import xgboost as xgb
 from tqdm import tqdm, trange
 from sklearn.cluster import KMeans
 from sklearn.metrics import recall_score, precision_score
+from time import time
 
 import sys
 sys.path.append('/media/bigdata/projects/neuRecommend/src/create_pipeline')
 from feature_engineering_pipeline import *
 
-plot_dir = '/media/bigdata/projects/neuRecommend/src/_experimental/kmean_predictions/plots'
+base_dir = '/media/bigdata/projects/neuRecommend/src/_experimental/kmean_predictions'
+plot_dir = f'{base_dir}/plots'
 if not os.path.exists(plot_dir):
     os.mkdir(plot_dir)
+artifact_dir = f'{base_dir}/artifacts'
+if not os.path.exists(artifact_dir):
+    os.mkdir(artifact_dir)
 
 file_path = '/media/bigdata/projects/neuRecommend/data/final/final_dataset.h5'
 h5 = tables.open_file(file_path,'r')
@@ -52,6 +57,9 @@ feature_pipeline = load(feature_pipeline_path)
 pred_pipeline = load(pred_pipeline_path)
 # clf_prob = pred_pipeline.predict_proba(slices)[:, 1]
 
+clf_path = f'{model_dir}/xgboost_classifier.dump'
+clf = load(clf_path)
+
 ############################################################
 # Kmeans Test
 ############################################################
@@ -62,13 +70,15 @@ pred_pipeline = load(pred_pipeline_path)
 
 n_subsets = 100
 n_samples = 10000
-n_samples_per_cluster = np.array([100, 1000])
-n_clusters = n_samples // n_samples_per_cluster 
+# n_samples_per_cluster = np.array([100, 1000])
+# n_clusters = n_samples // n_samples_per_cluster 
+n_clusters = np.array([10, 100, 250])
 
 recall_list = []
 precision_list = []
 for this_n_clusters in n_clusters:
     for i in trange(n_subsets): 
+        start = time()
         this_subset_inds = np.random.choice(all_data.shape[0], n_samples, replace=False)
         this_subset = all_data[this_subset_inds]
         this_labels = all_labels[this_subset_inds]
@@ -76,22 +86,16 @@ for this_n_clusters in n_clusters:
         full_pred_proba = pred_pipeline.predict_proba(this_subset)[:, 1]
 
         # Kmeans
+        # Mean values given to classifier need to be in feature-space,
+        # not waveform-space, as that is likely to be much less stable
+        # Also, median is likely to be more stable than mean
         kmeans = KMeans(n_clusters=this_n_clusters)
         transformed_subset = feature_pipeline.transform(this_subset)
-        kmeans.fit(this_subset)
+        kmeans.fit(transformed_subset)
         cluster_labels = kmeans.labels_
         processed_centroids = kmeans.cluster_centers_
 
-        # Get centroids
-        centroids = []
-        for clust_ind in range(this_n_clusters):
-            this_cluster_inds = np.where(cluster_labels == clust_ind)[0]
-            this_cluster_data = this_subset[this_cluster_inds]
-            this_cluster_mean = np.mean(this_cluster_data, axis=0)
-            centroids.append(this_cluster_mean)
-        centroids = np.array(centroids)
-
-        cluster_pred_proba = pred_pipeline.predict_proba(centroids)[:, 1]
+        cluster_pred_proba = clf.predict_proba(processed_centroids)[:, 1]
         cluster_pred_proba = cluster_pred_proba[cluster_labels]
 
         # Get prediction
@@ -102,28 +106,36 @@ for this_n_clusters in n_clusters:
         full_recall = recall_score(this_labels, full_pred)
         cluster_recall = recall_score(this_labels, cluster_pred)
 
+        # Compare precision between full and cluster
+        full_precision = precision_score(this_labels, full_pred)
+        cluster_precision = precision_score(this_labels, cluster_pred)
+
+        end = time()
+        elapsed = end - start
+
         recall_dict = {
             'cluster_recall': cluster_recall,
             'full_recall': full_recall,
             'n_clusters': this_n_clusters,
             'subset': i,
+            'elapsed': elapsed,
         }
         recall_list.append(recall_dict)
-
-        # Compare precision between full and cluster
-        full_precision = precision_score(this_labels, full_pred)
-        cluster_precision = precision_score(this_labels, cluster_pred)
 
         precision_dict = {
             'cluster_precision': cluster_precision,
             'full_precision': full_precision,
             'n_clusters': this_n_clusters,
             'subset': i,
+            'elapsed': elapsed,
         }
         precision_list.append(precision_dict)
 
 recall_frame = pd.DataFrame(recall_list)
 precision_frame = pd.DataFrame(precision_list)
+
+recall_frame.to_csv(f'{artifact_dir}/recall_frame.csv')
+precision_frame.to_csv(f'{artifact_dir}/precision_frame.csv')
 
 sns.relplot(
     data=recall_frame,
@@ -142,22 +154,6 @@ fig.savefig(f'{plot_dir}/recall_comparison_og_thresh.png',
 plt.close(fig)
 # plt.show()
 
-# Separate by n_clusters
-fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-for i, this_n_clusters in enumerate(np.sort(n_clusters)):
-    this_frame = recall_frame[recall_frame['n_clusters'] == this_n_clusters]
-    min_val = np.min([this_frame['full_recall'].min(), this_frame['cluster_recall'].min()])
-    max_val = np.max([this_frame['full_recall'].max(), this_frame['cluster_recall'].max()])
-    ax[i].scatter(this_frame['full_recall'], this_frame['cluster_recall'], label=this_n_clusters)
-    ax[i].plot([min_val, max_val], [min_val, max_val], 'k--')
-    ax[i].set_aspect('equal')
-    ax[i].set_title(f'N Clusters: {this_n_clusters}')
-    ax[i].set_xlabel('Full Recall')
-    ax[i].set_ylabel('Cluster Recall')
-fig.savefig(f'{plot_dir}/recall_comparison_og_thresh_separate.png',
-            bbox_inches='tight')
-plt.close(fig)
-
 sns.relplot(
     data=precision_frame,
     x = 'full_precision',
@@ -174,18 +170,50 @@ fig.savefig(f'{plot_dir}/precision_comparison_og_thresh.png',
             bbox_inches='tight')
 plt.close(fig)
 
-# Separate by n_clusters
-fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-for i, this_n_clusters in enumerate(np.sort(n_clusters)):
-    this_frame = precision_frame[precision_frame['n_clusters'] == this_n_clusters]
-    min_val = np.min([this_frame['full_precision'].min(), this_frame['cluster_precision'].min()])
-    max_val = np.max([this_frame['full_precision'].max(), this_frame['cluster_precision'].max()])
-    ax[i].scatter(this_frame['full_precision'], this_frame['cluster_precision'], label=this_n_clusters)
-    ax[i].plot([min_val, max_val], [min_val, max_val], 'k--')
-    ax[i].set_aspect('equal')
-    ax[i].set_title(f'N Clusters: {this_n_clusters}')
-    ax[i].set_xlabel('Full Precision')
-    ax[i].set_ylabel('Cluster Precision')
-fig.savefig(f'{plot_dir}/precision_comparison_og_thresh_separate.png',
-            bbox_inches='tight')
-plt.close(fig)
+# Plot histograms of recall and precision
+recall_long = recall_frame.melt(
+    id_vars=['n_clusters', 'subset', 'elapsed'],
+    value_vars=['full_recall', 'cluster_recall'],
+    var_name='recall_type',
+    value_name='recall_value',
+    )
+precision_long = precision_frame.melt(
+    id_vars=['n_clusters', 'subset', 'elapsed'],
+    value_vars=['full_precision', 'cluster_precision'],
+    var_name='precision_type',
+    value_name='precision_value',
+    )
+
+g = sns.displot(
+    data=recall_long,
+    x='recall_value',
+    hue='n_clusters',
+    kind='kde',
+    row='recall_type',
+    )
+g.fig.savefig(f'{plot_dir}/recall_comparison_hist_og_thresh.png',
+              bbox_inches='tight')
+plt.close(g.fig)
+
+g = sns.displot(
+    data=precision_long,
+    x='precision_value',
+    hue='n_clusters',
+    kind='kde',
+    row='precision_type',
+    )
+g.fig.savefig(f'{plot_dir}/precision_comparison_hist_og_thresh.png',
+              bbox_inches='tight')
+plt.close(g.fig)
+
+# Plot elapsed time as histogram
+g = sns.displot(
+    data=recall_frame,
+    x='elapsed',
+    hue='n_clusters',
+    kind='kde',
+    )
+g.axes[0].set_xlabels('Elapsed Time (s)')
+g.fig.savefig(f'{plot_dir}/elapsed_time_hist_og_thresh.png',
+              bbox_inches='tight')
+plt.close(g.fig)
