@@ -133,6 +133,35 @@ fig.savefig(os.path.join(plot_dir, 'pca_of_logistic_regression_coefficients.png'
             bbox_inches='tight', dpi=300)
 plt.close(fig)
 
+
+##############################
+# PCA on full dataset
+pca_full = PCA(n_components=6)
+pca_full.fit(X)
+
+plt.plot(np.cumsum(pca_full.explained_variance_ratio_), '-x')
+plt.title('Explained variance')
+plt.xlabel('PC #')
+plt.ylabel('Cumulative Explained variance')
+plt.show()
+
+# plt.imshow(pca_full.components_, aspect='auto', cmap='viridis')
+fig, ax = plt.subplots(2,1, sharex=True)
+# ax[0].plot(pca_full.components_.T, alpha=0.7, linewidth=5)
+for i, this_dat in enumerate(pca_full.components_):
+    ax[0].plot(this_dat, alpha=0.7, label=f'PC {i}', linewidth=5)
+ax[0].legend(bbox_to_anchor=(1,1))
+ax[0].set_title('PCA of full dataset')
+ax[1].set_xlabel('Timepoint')
+ax[0].set_ylabel('PC #')
+ax[1].plot(np.abs(pca_full.components_).mean(axis=0), '-x')
+ax[1].set_ylabel('Mean ABS coefficient')
+# plt.show()
+fig.savefig(os.path.join(plot_dir, 'pca_of_full_dataset.png'),
+            bbox_inches='tight', dpi=300)
+plt.close(fig)
+
+
 # plt.plot(coef_list.T, alpha = 0.01, color='k')
 # plt.show()
 
@@ -205,8 +234,29 @@ n_top = 12
 top_diff_inds = diff_sort_inds[:n_top]
 top_diff_pairs = [unit_inds[x] for x in top_diff_inds] 
 
-# Plot top diff pairs
 cmap = plt.cm.get_cmap('tab10')
+fig, ax = plt.subplots()
+wanted_pair = top_diff_pairs[1]
+for i, this_unit in enumerate(wanted_pair):
+    ax.plot(norm_dat[this_unit].T, color=cmap(i), alpha=0.05)
+    mean_dat = norm_dat[this_unit].mean(axis=0)
+    # std_dat = norm_dat[this_unit].std(axis=0)
+    ax.plot(mean_dat, label=f'Unit {this_unit}', color=cmap(i),
+            zorder=10, linewidth=3)
+    # ax.fill_between(np.arange(mean_dat.size), mean_dat - std_dat, mean_dat + std_dat, alpha=0.3)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['left'].set_visible(False)
+# Remove ticks on left
+ax.set_yticks([])
+ax.set_xlabel('Timepoint')
+ax.legend()
+# plt.show()
+fig.savefig(os.path.join(plot_dir, 'top_diff_pairs.png'),
+            bbox_inches='tight', dpi=300)
+plt.close(fig)
+
+# Plot top diff pairs
 n_rows = int(np.sqrt(n_top))
 n_cols = int(np.ceil(n_top / n_rows))
 fig, ax = plt.subplots(n_rows, n_cols, figsize=(15,10),

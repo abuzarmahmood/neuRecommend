@@ -57,7 +57,7 @@ repeats = 10
 wanted_cluster_list_unique = [1,2,3,4]
 wanted_cluster_list = wanted_cluster_list_unique * repeats
 
-weight_prior_list = [1, 1000, 100000]
+weight_prior_list = [1e-3, 1, 1000, 100000]
 
 product_list = list(product(wanted_cluster_list, weight_prior_list))
 
@@ -142,7 +142,7 @@ for i, weight_prior in enumerate(weight_prior_list):
                   this_df['run_cluster_counts'] + jitter_y)
     ax[i].set_title(f'Weight Prior: {weight_prior}, Corr: {np.round(corr[0], 2)}')
     ax[i].set_xlabel('Detected Clusters')
-    ax[i].set_ylabel('Run Clusters')
+    ax[i].set_ylabel('Actual Clusters')
     ax[i].set_xlim([0, 8])
     ax[i].set_ylim([0, 8])
     ax[i].set_aspect('equal')

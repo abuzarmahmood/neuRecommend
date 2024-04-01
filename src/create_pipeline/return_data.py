@@ -26,6 +26,12 @@ def return_data():
         for x in h5.iter_nodes(pos_path):
             pos_waveforms.append(x[:])
 
+    neg_counts = [x.shape[0] for x in neg_waveforms]
+    pos_counts = [x.shape[0] for x in pos_waveforms]
+
+    neg_groups = np.concatenate([np.ones(x)*i for i,x in enumerate(neg_counts)])
+    pos_groups = np.concatenate([np.ones(x)*i for i,x in enumerate(pos_counts)])
+
     neg_waveforms = np.concatenate(neg_waveforms, axis=0)
     pos_waveforms = np.concatenate(pos_waveforms, axis=0)
 
@@ -33,5 +39,6 @@ def return_data():
     pos_label = [1]*pos_waveforms.shape[0]
     fin_labels = np.concatenate([neg_label, pos_label])
     fin_data = np.concatenate([neg_waveforms, pos_waveforms])
+    fin_groups = np.concatenate([neg_groups, pos_groups])
 
-    return fin_data, fin_labels
+    return fin_data, fin_labels, fin_groups
