@@ -18,7 +18,18 @@ neuRecommend is a project focused on developing a classifier for semi-automated 
 - Model interpretability
 
 ## Getting Started
-Instructions on how to set up the project locally.
+To get started with neuRecommend, follow these simple steps:
+
+1. Clone the repository.
+2. Install the necessary dependencies.
+3. Run the application.
+
+```bash
+git clone https://github.com/abuzarmahmood/neuRecommend.git
+cd neuRecommend
+pip install -r requirements.txt
+python main.py
+```
 
 ## Usage
 Examples of how to use the classifier.
